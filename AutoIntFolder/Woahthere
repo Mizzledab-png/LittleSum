@@ -2,6 +2,7 @@ repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local uis = game:GetService("UserInputService")
 
 local plr = Players.LocalPlayer
@@ -11,10 +12,7 @@ local CFG = {
     Cmd = "!propad",
     FadeTime = 0.25,
     Col = Color3.fromRGB(255,60,60),
-    BG_Compact = Color3.fromRGB(10,10,16),
     BG_Full = Color3.fromRGB(5,5,10),
-    CompactSize = UDim2.new(0,260,0,140),
-    CompactPos = UDim2.new(0.12,0,0.8,0),
     FullSize = UDim2.new(1,0,1,0),
     FullPos = UDim2.new(0.5,0,0.5,0)
 }
@@ -34,21 +32,12 @@ plr.CharacterAdded:Connect(function()
     gui.Parent = plr:WaitForChild("PlayerGui")
 end)
 
-local tab = Instance.new("Frame", gui)
-tab.Size = CFG.CompactSize
-tab.Position = CFG.CompactPos
-tab.AnchorPoint = Vector2.new(.5,.5)
-tab.BackgroundColor3 = CFG.BG_Compact
-tab.BackgroundTransparency = 0.15
-tab.Visible = false
-Instance.new("UICorner", tab).CornerRadius = UDim.new(0,16)
-
 local full = Instance.new("Frame", gui)
 full.Size = CFG.FullSize
 full.Position = CFG.FullPos
 full.AnchorPoint = Vector2.new(.5,.5)
 full.BackgroundColor3 = CFG.BG_Full
-full.BackgroundTransparency = 0
+full.BackgroundTransparency = 1
 full.Visible = false
 
 local title = Instance.new("TextLabel", full)
@@ -102,46 +91,50 @@ status.TextColor3 = Color3.fromRGB(200,200,210)
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.Text = "Status: Idle"
 
--- EXPAND / COLLAPSE
-local isFull = false
+-- OPEN/CLOSE
+local isOpen = false
 
-local function expand()
-    if isFull then return end
-    isFull = true
+local function openPropad()
+    if isOpen then return end
+    isOpen = true
     full.Visible = true
     tween(full,{BackgroundTransparency = 0})
-    tween(tab,{BackgroundTransparency = 1})
-    task.delay(CFG.FadeTime,function() tab.Visible = false end)
 end
 
-local function collapse()
-    if not isFull then return end
-    isFull = false
-    tab.Visible = true
+local function closePropad()
+    if not isOpen then return end
+    isOpen = false
     tween(full,{BackgroundTransparency = 1})
-    tween(tab,{BackgroundTransparency = 0.15})
-    task.delay(CFG.FadeTime,function() full.Visible = false end)
+    task.delay(CFG.FadeTime,function()
+        full.Visible = false
+    end)
 end
 
--- TRUE VEHICLE DETECTION (FINAL CORE)
+-- VEHICLE DETECTION (BRONX 3)
+local function isSeat(obj)
+    if obj:IsA("VehicleSeat") or obj:IsA("Seat") then return true end
+    local n = obj.Name:lower()
+    return n:find("seat") or n:find("driver") or n:find("pilot")
+end
+
 local BAD_NAMES = {
-    ["Ensure"] = true,
-    ["Futon"] = true,
-    ["Model"] = true,
-    ["Body"] = true,
-    ["Part"] = true,
-    ["Seat"] = true,
-    ["PartyST"] = true,
+    ["ensure"] = true,
+    ["futon"] = true,
+    ["model"] = true,
+    ["body"] = true,
+    ["part"] = true,
+    ["seat"] = true,
+    ["partyst"] = true,
 }
 
-local VehicleCache = {}  -- model → true/false
+local VehicleCache = {}
 
 local function classifyVehicle(model)
     if VehicleCache[model] ~= nil then
         return VehicleCache[model]
     end
 
-    if BAD_NAMES[model.Name] then
+    if BAD_NAMES[model.Name:lower()] then
         VehicleCache[model] = false
         return false
     end
@@ -149,17 +142,20 @@ local function classifyVehicle(model)
     local hasSeat = false
     local partCount = 0
 
-    for _,child in ipairs(model:GetChildren()) do
-        if child:IsA("BasePart") then
+    for _,d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") then
             partCount += 1
-        elseif child:IsA("VehicleSeat") or child:IsA("Seat") then
+        elseif isSeat(d) then
             hasSeat = true
+        end
+        if partCount >= 4 and hasSeat then
+            VehicleCache[model] = true
+            return true
         end
     end
 
-    local isVehicle = (hasSeat and partCount >= 2)
-    VehicleCache[model] = isVehicle
-    return isVehicle
+    VehicleCache[model] = false
+    return false
 end
 
 local function resolveVehicle(seat)
@@ -173,14 +169,24 @@ local function resolveVehicle(seat)
     return seat
 end
 
--- VEHICLE DATABASE
+-- VEHICLE DB
 local VehicleDB = {}
 
-local function registerSeat(seat)
-    if not (seat:IsA("VehicleSeat") or seat:IsA("Seat")) then return end
-    VehicleDB[seat] = {
-        seat = seat,
-        car = resolveVehicle(seat)
+local function registerSeat(obj)
+    if not isSeat(obj) then return end
+
+    local parent = obj.Parent
+    while parent and parent ~= workspace do
+        if parent:IsA("Model") then
+            VehicleCache[parent] = nil
+            classifyVehicle(parent)
+        end
+        parent = parent.Parent
+    end
+
+    VehicleDB[obj] = {
+        seat = obj,
+        car = resolveVehicle(obj)
     }
 end
 
@@ -189,34 +195,29 @@ local function unregisterSeat(inst)
 end
 
 task.spawn(function()
-    for _,obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") then
-            classifyVehicle(obj)
-        end
-    end
-
     for _,obj in ipairs(workspace:GetDescendants()) do
         registerSeat(obj)
     end
 end)
 
 workspace.DescendantAdded:Connect(function(inst)
-    if inst:IsA("Model") then
-        classifyVehicle(inst)
-    elseif inst:IsA("VehicleSeat") or inst:IsA("Seat") then
+    if isSeat(inst) then
         registerSeat(inst)
+    elseif inst:IsA("Model") then
+        VehicleCache[inst] = nil
+        classifyVehicle(inst)
     end
 end)
 
 workspace.DescendantRemoving:Connect(unregisterSeat)
 
--- SAFE POSITION RESOLVER
+-- SAFE POSITION
 local function getCarPosition(car, seat)
     if car:IsA("Model") then
         if car.PrimaryPart then
             return car.PrimaryPart.Position
         end
-        for _,child in ipairs(car:GetChildren()) do
+        for _,child in ipairs(car:GetDescendants()) do
             if child:IsA("BasePart") then
                 return child.Position
             end
@@ -225,7 +226,7 @@ local function getCarPosition(car, seat)
     return seat.Position
 end
 
--- BUILD VEHICLE LIST
+-- BUILD LIST
 local function buildList()
     local list = {}
     local char = plr.Character or plr.CharacterAdded:Wait()
@@ -248,7 +249,7 @@ local function buildList()
     return list
 end
 
--- DISTANCE BAR
+-- DIST BAR
 local function makeBar(dist)
     local maxDist = 300
     local pct = math.clamp(dist / maxDist, 0, 1)
@@ -273,8 +274,10 @@ local function makeBar(dist)
     return bar
 end
 
--- TARGET SELECTION + REPROGRAM
+-- TARGET + TRACKING
 local lastTarget = nil
+local trackedCar = nil
+local trackedSeat = nil
 
 local function ACQUIRE()
     scroll:ClearAllChildren()
@@ -305,6 +308,9 @@ local function ACQUIRE()
 
         btn.MouseButton1Click:Connect(function()
             lastTarget = entry
+            trackedCar = entry.car
+            trackedSeat = entry.seat
+
             textLabel.Text = string.format("<b>TARGET LOCKED</b>\n%s\nDistance: %d studs", car.Name, dist)
             status.Text = "Status: ACQ // LOCKED"
         end)
@@ -315,17 +321,38 @@ local function ACQUIRE()
     scroll.CanvasSize = UDim2.new(0,0,0,y)
 end
 
+-- PERMANENT SEAT UNLOCK + TRACKING
+RunService.Heartbeat:Connect(function()
+    if trackedCar and trackedCar.Parent then
+        for _,d in ipairs(trackedCar:GetDescendants()) do
+            if d:GetAttribute("SeatDisabled") ~= nil then d:SetAttribute("SeatDisabled", false) end
+            if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
+            if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
+        end
+
+        local pos = getCarPosition(trackedCar, trackedSeat)
+        local char = plr.Character
+        if char then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local dist = (pos - root.Position).Magnitude
+                status.Text = string.format("Tracking: %s  |  %.1f studs", trackedCar.Name, dist)
+            end
+        end
+    end
+end)
+
+-- REPROGRAM
 local function REPROGRAM()
-    if not lastTarget then
+    if not trackedCar then
         textLabel.Text = "<b>REPROGRAM</b>\nNo target selected."
         return
     end
 
-    local car = lastTarget.car
     textLabel.Text = "<b>REPROGRAM</b>\nClearing seat restrictions..."
     status.Text = "Status: ECU // ACTIVE"
 
-    for _,d in ipairs(car:GetDescendants()) do
+    for _,d in ipairs(trackedCar:GetDescendants()) do
         if d:GetAttribute("SeatDisabled") ~= nil then d:SetAttribute("SeatDisabled", false) end
         if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
         if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
@@ -335,7 +362,7 @@ local function REPROGRAM()
     status.Text = "Status: ECU // COMPLETE"
 end
 
--- BUTTONS + INPUT
+-- BUTTONS
 local function makeButton(label, order, callback)
     local b = Instance.new("TextButton", full)
     b.Size = UDim2.new(0,180,0,40)
@@ -354,19 +381,20 @@ local function buildButtons()
     makeButton("REPROGRAM",2,REPROGRAM)
     makeButton("EXIT",3,function()
         scroll:ClearAllChildren()
-        collapse()
+        closePropad()
     end)
 end
 
+-- INPUT
 uis.InputBegan:Connect(function(i)
     if i.KeyCode == CFG.Key then
-        if not isFull then
-            expand()
+        if not isOpen then
+            openPropad()
             textLabel.Text = "<b>AUTEL PROPAD</b>\nSelect a module."
             status.Text = "Status: READY"
             buildButtons()
         else
-            collapse()
+            closePropad()
         end
     end
 end)
@@ -374,13 +402,13 @@ end)
 plr.Chatted:Connect(function(msg)
     msg = msg:lower()
     if msg == CFG.Cmd then
-        if not isFull then
-            expand()
+        if not isOpen then
+            openPropad()
             textLabel.Text = "<b>AUTEL PROPAD</b>\nSelect a module."
             status.Text = "Status: READY"
             buildButtons()
         else
-            collapse()
+            closePropad()
         end
     end
 end)
