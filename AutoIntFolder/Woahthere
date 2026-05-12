@@ -378,7 +378,7 @@ local function CONNECTIONS()
         b.MouseButton1Click:Connect(function()
             lastCar = e.car
             clearSonarUI()
-            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Connection Progress:</font>"):format(e.car.Name))
+            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Reprogram Progression</font>"):format(e.car.Name))
             showTargetUI(e.car)
         end)
     end
