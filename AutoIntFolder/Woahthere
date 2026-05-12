@@ -1,5 +1,9 @@
 --========================================================--
--- AUTEL PROPAD V2 - ULTRA CLEAN + SYNCED (NO 3D MODEL)
+-- AUTEL PROPAD V2 - HYBRID CLEAN + FAST + 360 SCAN
+--  - 360° SCAN detection
+--  - Full multi-car SONAR labels
+--  - Fixed EXIT reset
+--  - ScreenGui + SurfaceGui synced
 --========================================================--
 
 local Players = game:GetService("Players")
@@ -175,7 +179,7 @@ local exitNav  = makeNavButton("EXIT",    5)
 --========================================================--
 
 local isLinked = false
-local surfaceTablet -- forward declaration for use in updateLinkStatus
+local surfaceTablet -- forward declaration
 
 local function updateLinkStatus()
     local text = isLinked and "Connected" or "Unlinked"
@@ -272,11 +276,15 @@ local function registerCar(seat)
 end
 
 for _, obj in ipairs(workspace:GetDescendants()) do
-    if obj:IsA("VehicleSeat") then registerCar(obj) end
+    if obj:IsA("VehicleSeat") then
+        registerCar(obj)
+    end
 end
 
 workspace.DescendantAdded:Connect(function(obj)
-    if obj:IsA("VehicleSeat") then registerCar(obj) end
+    if obj:IsA("VehicleSeat") then
+        registerCar(obj)
+    end
 end)
 
 workspace.DescendantRemoving:Connect(function(obj)
@@ -329,7 +337,8 @@ local function findCar(opts)
                     local dist = offset.Magnitude
                     if dist <= bestDist then
                         if useForward then
-                            if forward:Dot(offset.Unit) >= minDot then
+                            local dir = offset.Unit
+                            if forward:Dot(dir) >= minDot then
                                 bestCar, bestDist = car, dist
                             end
                         else
@@ -352,12 +361,16 @@ local activeDistanceUIs = {}
 
 local function clearAllSonarUI()
     for car, entry in pairs(activeDistanceUIs) do
-        if entry.gui then entry.gui:Destroy() end
+        if entry.gui then
+            entry.gui:Destroy()
+        end
         activeDistanceUIs[car] = nil
     end
 end
 
 local function createDistanceUI(car)
+    if activeDistanceUIs[car] then return end
+
     local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
     if not primary then return end
 
@@ -403,7 +416,9 @@ RunService.Heartbeat:Connect(function()
     for car, entry in pairs(activeDistanceUIs) do
         local primary = entry.primary
         if not car.Parent or not primary or not primary.Parent then
-            entry.gui:Destroy()
+            if entry.gui then
+                entry.gui:Destroy()
+            end
             activeDistanceUIs[car] = nil
         else
             local dist = (primary.Position - root.Position).Magnitude
@@ -433,10 +448,18 @@ local function spoofKey(car)
     car:SetAttribute("Locked", false)
 
     for _, d in ipairs(car:GetDescendants()) do
-        if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = false end
-        if d:IsA("BasePart") then d.Anchored = false end
-        if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
-        if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
+        if d:IsA("VehicleSeat") or d:IsA("Seat") then
+            d.Disabled = false
+        end
+        if d:IsA("BasePart") then
+            d.Anchored = false
+        end
+        if d:GetAttribute("EngineDisabled") ~= nil then
+            d:SetAttribute("EngineDisabled", false)
+        end
+        if d:GetAttribute("Immobilized") ~= nil then
+            d:SetAttribute("Immobilized", false)
+        end
         if d:IsA("Script") or d:IsA("LocalScript") then
             local n = d.Name:lower()
             if n:find("lock") or n:find("immobil") or n:find("engine") then
@@ -453,6 +476,7 @@ end
 -- NAVIGATION LOGIC
 --========================================================--
 
+-- 360° SCAN detection
 scanNav.MouseButton1Click:Connect(function()
     isLinked = false
     updateLinkStatus()
@@ -460,14 +484,13 @@ scanNav.MouseButton1Click:Connect(function()
     highlightNav("SCAN")
 
     local car = findCar({
-        useForward = true,
-        maxDist = 25,
-        minDot = 0.3,
+        useForward = false, -- 360° detection
+        maxDist = 60,
     })
 
     if not car then
         syncStatus("No car found", Color3.fromRGB(255, 0, 0))
-        syncMain("SCAN MODULE\n\nNo vehicle detected in front of you.")
+        syncMain("SCAN MODULE\n\nNo vehicle detected around you.")
         return
     end
 
@@ -482,7 +505,7 @@ scanNav.MouseButton1Click:Connect(function()
 
     syncStatus("Target acquired: " .. car.Name, Color3.fromRGB(0, 255, 0))
     syncMain(string.format(
-        "SCAN MODULE\n\nNearest Vehicle:\nName: %s\nDistance: %d studs\nLocked: %s",
+        "SCAN MODULE\n\nNearest Vehicle (360°):\nName: %s\nDistance: %d studs\nLocked: %s",
         car.Name,
         math.floor(dist),
         tostring(locked)
@@ -505,6 +528,7 @@ spoofNav.MouseButton1Click:Connect(function()
     spoofKey(lastScannedCar)
 end)
 
+-- Full multi-car SONAR labels
 sonarNav.MouseButton1Click:Connect(function()
     isLinked = false
     updateLinkStatus()
@@ -517,30 +541,25 @@ sonarNav.MouseButton1Click:Connect(function()
         return
     end
 
-    local closestCar = findCar({
-        useForward = false,
-        maxDist = math.huge,
-    })
+    local seenCars = {}
+    for _, seat in ipairs(vehicleSeats) do
+        if seat.Parent then
+            local car = getTopmostModelFromSeat(seat)
+            if car and not seenCars[car] then
+                seenCars[car] = true
+                createDistanceUI(car)
+            end
+        end
+    end
 
-    if not closestCar then
+    if next(seenCars) == nil then
         syncStatus("No cars detected", Color3.fromRGB(255, 0, 0))
         syncMain("SONAR MODULE\n\nNo vehicles in range.")
         return
     end
 
-    createDistanceUI(closestCar)
-
-    local char = lp.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local primary = closestCar.PrimaryPart or closestCar:FindFirstChildWhichIsA("BasePart", true)
-    local dist = (root and primary) and (primary.Position - root.Position).Magnitude or 0
-
-    syncStatus("SONAR tracking: " .. closestCar.Name, Color3.fromRGB(0, 255, 0))
-    syncMain(string.format(
-        "SONAR MODULE\n\nClosest Vehicle:\nName: %s\nDistance: %d studs\n\nDistance label stays above the car while SONAR is active.",
-        closestCar.Name,
-        math.floor(dist)
-    ))
+    syncStatus("SONAR tracking all vehicles", Color3.fromRGB(0, 255, 0))
+    syncMain("SONAR MODULE\n\nTracking ALL vehicles.\nDistance labels stay above each car while SONAR is active.")
 end)
 
 setNav.MouseButton1Click:Connect(function()
@@ -553,13 +572,21 @@ setNav.MouseButton1Click:Connect(function()
     syncMain("SETTINGS MODULE\n\nKeybind: T\nTheme: Ultra Clean\nSync: Enabled\n\nValues are static in this build.")
 end)
 
+-- Fixed EXIT: full reset
 exitNav.MouseButton1Click:Connect(function()
     isLinked = false
     updateLinkStatus()
     clearAllSonarUI()
-    highlightNav("EXIT")
+
+    currentMode = "NONE"
+    highlightNav("NONE")
+
+    spoofedKeys = {}
+    lastScannedCar = nil
 
     syncStatus("Closed", Color3.fromRGB(255, 170, 0))
+    syncMain("Select a module on the left.")
+
     tablet.Visible = false
     syncVisibility()
 end)
