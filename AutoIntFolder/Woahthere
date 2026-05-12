@@ -8,19 +8,18 @@ local ts = game.TweenService
 local rs = game:GetService("RunService")
 
 local CFG = {
-    Size = UDim2.new(0,380,0,260),
-    Pos  = UDim2.new(.5,0,.55,0),
-    Key  = Enum.KeyCode.T,
-    Cmd  = "!autel",
-    Col  = Color3.fromRGB(220,40,40),
-    BG   = Color3.fromRGB(10,10,14),
-    Panel= Color3.fromRGB(18,18,24),
-
-    -- DESKTOP ONLY
+    Size  = UDim2.new(0,380,0,260),
+    Pos   = UDim2.new(.5,0,.55,0),
+    Key   = Enum.KeyCode.T,
+    Cmd   = "!autel",
+    Col   = Color3.fromRGB(220,40,40),
+    BG    = Color3.fromRGB(10,10,14),
+    Panel = Color3.fromRGB(18,18,24),
+    -- Desktop‑only; no mobile button
     UseMobileButton = false
 }
 
-local function tween(o,p,t)
+local function tween(o, p, t)
     return ts:Create(o, TweenInfo.new(t or .25, Enum.EasingStyle.Quad), p)
 end
 
@@ -47,10 +46,10 @@ local function getProgressBar(pct)
     local empty = 10 - filled
     local bar = ""
 
-    for _ = 1,filled do
+    for _ = 1, filled do
         bar = bar .. "<font color='rgb(0,255,0)'>▂</font>"
     end
-    for _ = 1,empty do
+    for _ = 1, empty do
         bar = bar .. "<font color='rgb(60,60,60)'>▂</font>"
     end
 
@@ -72,7 +71,7 @@ local lastCar = nil
 
 local function assignPrimaryPart(m)
     if m.PrimaryPart then return m.PrimaryPart end
-    for _,p in ipairs(m:GetDescendants()) do
+    for _, p in ipairs(m:GetDescendants()) do
         if p:IsA("BasePart") then
             m.PrimaryPart = p
             return p
@@ -100,7 +99,7 @@ end
 workspace.ChildRemoved:Connect(function(m)
     if VM.primary[m] then
         VM.primary[m] = nil
-        for i,v in ipairs(VM.cars) do
+        for i, v in ipairs(VM.cars) do
             if v == m then
                 table.remove(VM.cars, i)
                 break
@@ -122,7 +121,7 @@ workspace.DescendantAdded:Connect(function(o)
     end
 end)
 
-for _,o in ipairs(workspace:GetDescendants()) do
+for _, o in ipairs(workspace:GetDescendants()) do
     if o:IsA("VehicleSeat") then
         local m = o:FindFirstAncestorWhichIsA("Model")
         if m then registerModel(m) end
@@ -134,16 +133,19 @@ end
 -- SECTION 3: GUI FRAMEWORK (DESKTOP)
 -------------------------------------
 
-local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
+local gui = Instance.new("ScreenGui")
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
+gui.Name = "AUTEL_PROPAD"
+gui.Parent = plr:WaitForChild("PlayerGui")
 
-local tab = Instance.new("Frame", gui)
+local tab = Instance.new("Frame")
 tab.Size = CFG.Size
 tab.Position = CFG.Pos
 tab.AnchorPoint = Vector2.new(.5,.5)
 tab.BackgroundColor3 = CFG.BG
 tab.Visible = false
+tab.Parent = gui
 Instance.new("UICorner", tab).CornerRadius = UDim.new(0,16)
 
 local st = Instance.new("UIStroke", tab)
@@ -151,7 +153,7 @@ st.Thickness = 2
 st.Color = CFG.Col
 st.Transparency = .2
 
--- Desktop Dragging
+-- Dragging (desktop)
 local drag, ds, sp
 tab.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -218,10 +220,10 @@ txt.TextYAlignment = Enum.TextYAlignment.Top
 txt.Text = "Select a module on the left."
 
 local function setText(t)
-    tween(txt,{TextTransparency=1},.1):Play()
-    task.delay(.11,function()
+    tween(txt, {TextTransparency = 1}, .1):Play()
+    task.delay(.11, function()
         txt.Text = t
-        tween(txt,{TextTransparency=0},.15):Play()
+        tween(txt, {TextTransparency = 0}, .15):Play()
     end)
 end
 
@@ -277,7 +279,7 @@ local function clearSonarUI()
     sonarList.Visible = false
     sonarList.CanvasSize = UDim2.new(0,0,0,0)
 
-    for _,v in ipairs(sonarList:GetChildren()) do
+    for _, v in ipairs(sonarList:GetChildren()) do
         if v:IsA("TextButton") then
             v:Destroy()
         end
@@ -356,7 +358,7 @@ local function buildVehicleList()
     if not ok or not r or not r.Parent then return {} end
 
     local list = {}
-    for _,m in ipairs(VM.cars) do
+    for _, m in ipairs(VM.cars) do
         local p = VM.primary[m]
         if p and m.Parent then
             local d = (p.Position - r.Position).Magnitude
@@ -364,7 +366,7 @@ local function buildVehicleList()
         end
     end
 
-    table.sort(list, function(a,b)
+    table.sort(list, function(a, b)
         return a.dist < b.dist
     end)
 
@@ -390,7 +392,7 @@ local function CONNECTIONS()
 
     local buttons = {}
 
-    for _,e in ipairs(list) do
+    for _, e in ipairs(list) do
         local b = Instance.new("TextButton", sonarList)
         b.Size = UDim2.new(1,0,0,22)
         b.BackgroundTransparency = 1
@@ -423,7 +425,7 @@ local function CONNECTIONS()
         local ok, r = pcall(root)
         if not ok or not r or not r.Parent then return end
 
-        for car,button in pairs(buttons) do
+        for car, button in pairs(buttons) do
             if car and car.Parent then
                 local p = VM.primary[car]
                 if p then
@@ -456,7 +458,7 @@ local function REPROGRAM()
     end
 
     local parts = {}
-    for _,d in ipairs(lastCar:GetDescendants()) do
+    for _, d in ipairs(lastCar:GetDescendants()) do
         if d:IsA("BasePart") or d:IsA("Seat") or d:IsA("VehicleSeat") then
             table.insert(parts, d)
         end
@@ -519,7 +521,7 @@ local function SCAN()
     local farthest = list[#list]
 
     local sum = 0
-    for _,e in ipairs(list) do
+    for _, e in ipairs(list) do
         sum += e.dist
     end
 
@@ -550,3 +552,397 @@ local function SPOOFKEY()
         status.Text = "Status: Idle"
         return
     end
+
+    local p = VM.primary[lastCar]
+    if not p then
+        setText("SPOOF KEY MODE\n\nVehicle missing primary part.")
+        return
+    end
+
+    local ok, r = pcall(root)
+    if not ok or not r or not r.Parent then return end
+
+    local dist = (p.Position - r.Position).Magnitude
+    if dist > 120 then
+        setText("SPOOF KEY MODE\n\nOut of range.\nMove closer to the vehicle.")
+        status.Text = "Status: Out of range"
+        return
+    end
+
+    setText(("SPOOF KEY MODE\n\nVehicle: %s\nRange OK (%d studs)\n\nSelect an action:")
+        :format(lastCar.Name, math.floor(dist)))
+    status.Text = "Status: Key Fob Ready"
+
+    local function makeAction(name, order, callback)
+        local b = Instance.new("TextButton", panel)
+        b.Size = UDim2.new(1,-16,0,30)
+        b.Position = UDim2.new(0,8,0,180 + (order * 34))
+        b.BackgroundColor3 = Color3.fromRGB(20,20,26)
+        b.Font = Enum.Font.GothamBold
+        b.TextColor3 = Color3.fromRGB(240,240,245)
+        b.TextScaled = true
+        b.Text = name
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+        b.MouseEnter:Connect(function()
+            tween(b, {BackgroundColor3 = CFG.Col}, .15):Play()
+        end)
+
+        b.MouseLeave:Connect(function()
+            tween(b, {BackgroundColor3 = Color3.fromRGB(20,20,26)}, .15):Play()
+        end)
+
+        b.MouseButton1Click:Connect(callback)
+    end
+
+    -- Lock Doors
+    makeAction("Lock Doors",1,function()
+        for _, d in ipairs(lastCar:GetDescendants()) do
+            if d:IsA("BasePart") then
+                pcall(function()
+                    d:SetAttribute("Locked", true)
+                end)
+            end
+        end
+
+        setText("SPOOF KEY MODE\n\nDoors Locked.\nLights flashed.")
+        status.Text = "Status: Locked"
+
+        for _, l in ipairs(lastCar:GetDescendants()) do
+            if l:IsA("Light") then
+                pcall(function()
+                    l.Enabled = true
+                    task.delay(.25,function()
+                        l.Enabled = false
+                    end)
+                end)
+            end
+        end
+    end)
+
+    -- Unlock Doors
+    makeAction("Unlock Doors",2,function()
+        for _, d in ipairs(lastCar:GetDescendants()) do
+            if d:IsA("BasePart") then
+                pcall(function()
+                    d:SetAttribute("Locked", false)
+                end)
+            end
+        end
+
+        setText("SPOOF KEY MODE\n\nDoors Unlocked.")
+        status.Text = "Status: Unlocked"
+    end)
+
+    -- Honk Horn
+    makeAction("Honk Horn",3,function()
+        for _, s in ipairs(lastCar:GetDescendants()) do
+            if s:IsA("Sound") and s.Name:lower():find("horn") then
+                pcall(function()
+                    s:Play()
+                end)
+            end
+        end
+
+        setText("SPOOF KEY MODE\n\nHorn Activated.")
+        status.Text = "Status: Horn"
+    end)
+
+    -- Flash Lights
+    makeAction("Flash Lights",4,function()
+        for _, l in ipairs(lastCar:GetDescendants()) do
+            if l:IsA("Light") then
+                pcall(function()
+                    l.Enabled = true
+                    task.delay(.3,function()
+                        l.Enabled = false
+                    end)
+                end)
+            end
+        end
+
+        setText("SPOOF KEY MODE\n\nLights Flashed.")
+        status.Text = "Status: Flash"
+    end)
+
+    -- Panic Mode
+    makeAction("Panic Mode",5,function()
+        setText("SPOOF KEY MODE\n\nPanic Mode Activated!")
+        status.Text = "Status: PANIC"
+
+        local t = 0
+        local panicConn
+        panicConn = rs.Heartbeat:Connect(function(dt)
+            t += dt
+            if t > 3 then
+                panicConn:Disconnect()
+                status.Text = "Status: Idle"
+                return
+            end
+
+            for _, l in ipairs(lastCar:GetDescendants()) do
+                if l:IsA("Light") then
+                    pcall(function()
+                        l.Enabled = (math.random() > .5)
+                    end)
+                end
+            end
+
+            for _, s in ipairs(lastCar:GetDescendants()) do
+                if s:IsA("Sound") and s.Name:lower():find("horn") then
+                    if math.random() > .8 then
+                        pcall(function()
+                            s:Play()
+                        end)
+                    end
+                end
+            end
+        end)
+    end)
+end
+
+
+-------------------------------------
+-- SECTION 6: ENCRYPTED KEY FOB MODULE
+-------------------------------------
+
+local function ENCRYPTEDKEY()
+    clearSonarUI()
+
+    if not lastCar or not lastCar.Parent then
+        setText("ENCRYPTED KEY FOB\n\nNo target selected.\nUse Connections first.")
+        status.Text = "Status: Idle"
+        return
+    end
+
+    local p = VM.primary[lastCar]
+    if not p then
+        setText("ENCRYPTED KEY FOB\n\nVehicle missing primary part.")
+        return
+    end
+
+    local ok, r = pcall(root)
+    if not ok or not r or not r.Parent then return end
+
+    local dist = (p.Position - r.Position).Magnitude
+    if dist > 120 then
+        setText("ENCRYPTED KEY FOB\n\nOut of range.\nMove closer to the vehicle.")
+        status.Text = "Status: Out of range"
+        return
+    end
+
+    local seed = lastCar:GetAttribute("KeySeed")
+    if not seed then
+        seed = math.random(100000,999999)
+        lastCar:SetAttribute("KeySeed", seed)
+    end
+
+    local challenge = math.random(10000,99999)
+    lastCar:SetAttribute("Challenge", challenge)
+
+    setText((
+        "ENCRYPTED KEY FOB\n\nVehicle: %s\nRange OK (%d studs)\n\nChallenge Code: %d\n\nSelect an action:"
+    ):format(lastCar.Name, math.floor(dist), challenge))
+
+    status.Text = "Status: Encrypted Ready"
+
+    local function makeAction(name, order, callback)
+        local b = Instance.new("TextButton", panel)
+        b.Size = UDim2.new(1,-16,0,30)
+        b.Position = UDim2.new(0,8,0,180 + (order*34))
+        b.BackgroundColor3 = Color3.fromRGB(20,20,26)
+        b.Font = Enum.Font.GothamBold
+        b.TextColor3 = Color3.fromRGB(240,240,245)
+        b.TextScaled = true
+        b.Text = name
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+        b.MouseEnter:Connect(function()
+            tween(b,{BackgroundColor3=CFG.Col},.15):Play()
+        end)
+
+        b.MouseLeave:Connect(function()
+            tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
+        end)
+
+        b.MouseButton1Click:Connect(callback)
+    end
+
+    local function encryptResponse(seedVal, challengeVal)
+        return (seedVal * 7 + challengeVal * 13) % 999999
+    end
+
+    local function verify()
+        local storedSeed = lastCar:GetAttribute("KeySeed")
+        local storedChallenge = lastCar:GetAttribute("Challenge")
+        local expected = encryptResponse(storedSeed, storedChallenge)
+        return expected
+    end
+
+    -- Unlock (Encrypted)
+    makeAction("Unlock (Encrypted)",1,function()
+        local expected = verify()
+        local response = encryptResponse(seed, challenge)
+
+        if response ~= expected then
+            setText("ENCRYPTED KEY FOB\n\nHandshake Failed.\nRolling code mismatch.")
+            status.Text = "Status: Denied"
+            return
+        end
+
+        for _, d in ipairs(lastCar:GetDescendants()) do
+            if d:IsA("BasePart") then
+                pcall(function() d:SetAttribute("Locked", false) end)
+            end
+        end
+
+        lastCar:SetAttribute("KeySeed", seed + math.random(5,25))
+
+        setText("ENCRYPTED KEY FOB\n\nDoors Unlocked.\nHandshake Verified.")
+        status.Text = "Status: Unlocked"
+    end)
+
+    -- Lock (Encrypted)
+    makeAction("Lock (Encrypted)",2,function()
+        local expected = verify()
+        local response = encryptResponse(seed, challenge)
+
+        if response ~= expected then
+            setText("ENCRYPTED KEY FOB\n\nHandshake Failed.\nRolling code mismatch.")
+            status.Text = "Status: Denied"
+            return
+        end
+
+        for _, d in ipairs(lastCar:GetDescendants()) do
+            if d:IsA("BasePart") then
+                pcall(function() d:SetAttribute("Locked", true) end)
+            end
+        end
+
+        lastCar:SetAttribute("KeySeed", seed + math.random(5,25))
+
+        setText("ENCRYPTED KEY FOB\n\nDoors Locked.\nHandshake Verified.")
+        status.Text = "Status: Locked"
+    end)
+
+    -- Replay Attack
+    makeAction("Replay Attack",3,function()
+        local storedSeed = lastCar:GetAttribute("KeySeed")
+        local storedChallenge = lastCar:GetAttribute("Challenge")
+
+        local fakeResponse = encryptResponse(storedSeed, storedChallenge)
+
+        if fakeResponse == encryptResponse(seed, challenge) then
+            setText("ENCRYPTED KEY FOB\n\nReplay Attack Failed.\nRolling code already changed.")
+            status.Text = "Status: Replay Blocked"
+        else
+            setText("ENCRYPTED KEY FOB\n\nReplay Attack Blocked.\nVehicle rejected old code.")
+            status.Text = "Status: Blocked"
+        end
+    end)
+
+    -- Force Sync
+    makeAction("Force Sync",4,function()
+        local newSeed = math.random(100000,999999)
+        lastCar:SetAttribute("KeySeed", newSeed)
+
+        setText("ENCRYPTED KEY FOB\n\nKey Fob Resynced.\nNew Rolling Code Established.")
+        status.Text = "Status: Synced"
+    end)
+end
+
+
+-------------------------------------
+-- SECTION 7: EXIT MODULE
+-------------------------------------
+
+local function EXIT()
+    clearSonarUI()
+    lastCar = nil
+
+    status.Text = "Status: Idle"
+    setText("Session closed.\n\nPress T or type !autel to reopen.")
+
+    tab.Visible = false
+end
+
+
+-------------------------------------
+-- SECTION 8: BUTTON CREATION
+-------------------------------------
+
+local function btn(name, order, callback)
+    local b = Instance.new("TextButton", nav)
+    b.Size = UDim2.new(1,0,0,30)
+    b.Position = UDim2.new(0,0,0,(order-1)*34)
+    b.BackgroundColor3 = Color3.fromRGB(20,20,26)
+    b.Font = Enum.Font.GothamBold
+    b.TextColor3 = Color3.fromRGB(240,240,245)
+    b.TextScaled = true
+    b.Text = name
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+    b.MouseEnter:Connect(function()
+        tween(b,{BackgroundColor3=CFG.Col},.15):Play()
+    end)
+
+    b.MouseLeave:Connect(function()
+        tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
+    end)
+
+    b.MouseButton1Click:Connect(callback)
+end
+
+btn("Connections",   1, CONNECTIONS)
+btn("Reprogram",     2, REPROGRAM)
+btn("Scan",          3, SCAN)
+btn("Spoof Key",     4, SPOOFKEY)
+btn("Encrypted Key", 5, ENCRYPTEDKEY)
+btn("Exit",          6, EXIT)
+
+
+-------------------------------------
+-- SECTION 9: INPUT HANDLING
+-------------------------------------
+
+local function openTablet()
+    tab.Visible = true
+    tween(tab, {Position = CFG.Pos}, .25):Play()
+
+    if lastCar and lastCar.Parent then
+        setText(("Reconnected to %s.\n\nSelect a module."):format(lastCar.Name))
+        status.Text = "Status: Ready"
+    else
+        setText("AUTEL PROPAD READY\n\nSelect a module on the left.")
+        status.Text = "Status: Idle"
+    end
+end
+
+local function closeTablet()
+    tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
+    task.delay(.25, function()
+        tab.Visible = false
+    end)
+end
+
+uis.InputBegan:Connect(function(i, gpe)
+    if gpe then return end
+    if i.KeyCode == CFG.Key then
+        if tab.Visible then
+            closeTablet()
+        else
+            openTablet()
+        end
+    end
+end)
+
+plr.Chatted:Connect(function(msg)
+    msg = msg:lower()
+    if msg == CFG.Cmd then
+        if tab.Visible then
+            closeTablet()
+        else
+            openTablet()
+        end
+    end
+end)
