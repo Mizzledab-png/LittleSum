@@ -67,9 +67,10 @@ grid.ImageTransparency = 0.85
 grid.ScaleType = Enum.ScaleType.Tile
 grid.TileSize = UDim2.new(0,120,0,120)
 
+-- RIGHT‑SIDE PANEL FOR LIST / CONTROLS
 local panel = Instance.new("Frame", full)
-panel.Size = UDim2.new(0.5,0,0.45,0)
-panel.Position = UDim2.new(0.05,0,0.5,0)
+panel.Size = UDim2.new(0.4,0,0.7,0)
+panel.Position = UDim2.new(0.55,0,0.2,0)
 panel.BackgroundTransparency = 1
 
 local scrollFrame = Instance.new("ScrollingFrame", panel)
@@ -79,19 +80,21 @@ scrollFrame.ScrollBarThickness = 6
 scrollFrame.BackgroundTransparency = 1
 scrollFrame.ScrollBarImageColor3 = CFG.Col
 
+-- LEFT‑SIDE TEXT / STATUS
 local titleLabel = Instance.new("TextLabel", full)
-titleLabel.Size = UDim2.new(1,0,0,60)
-titleLabel.Position = UDim2.new(0,0,0,10)
+titleLabel.Size = UDim2.new(0.5,0,0,60)
+titleLabel.Position = UDim2.new(0.03,0,0.03,0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextScaled = true
 titleLabel.RichText = true
 titleLabel.TextColor3 = Color3.fromRGB(240,240,245)
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Text = "<b>AUTEL//PRO — SPECTRE OPS SUITE</b>"
 
 local textLabel = Instance.new("TextLabel", full)
-textLabel.Size = UDim2.new(0.9,0,0.25,0)
-textLabel.Position = UDim2.new(0.05,0,0.18,0)
+textLabel.Size = UDim2.new(0.5,0,0.35,0)
+textLabel.Position = UDim2.new(0.03,0,0.18,0)
 textLabel.BackgroundTransparency = 1
 textLabel.Font = Enum.Font.Gotham
 textLabel.TextScaled = true
@@ -212,12 +215,24 @@ _G.AUTELPRO_SPECTRE.setText = setText
 _G.AUTELPRO_SPECTRE.moduleTransition = moduleTransition
 _G.AUTELPRO_SPECTRE.clearPanel = clearPanel
 
--- live vehicle seat database
+-- live vehicle seat database (infinite range, auto‑updating)
 local VehicleDB = {}
+local FILTER_OUT = {
+    Body = true,
+    Model = true,
+    Part = true,
+}
 
 local function registerSeat(seat)
     if not (seat:IsA("VehicleSeat") or seat:IsA("Seat")) then return end
     local car = seat:FindFirstAncestorOfClass("Model") or seat
+    if FILTER_OUT[car.Name] then
+        VehicleDB[seat] = {
+            seat = seat,
+            car = seat
+        }
+        return
+    end
     VehicleDB[seat] = {
         seat = seat,
         car = car
@@ -260,17 +275,26 @@ local function buildVehicleList()
 
     for seat,info in pairs(VehicleDB) do
         if seat.Parent and info.car and info.car.Parent then
-            local pos
-            if info.car:IsA("Model") and info.car.PrimaryPart then
-                pos = info.car.PrimaryPart.Position
+            if FILTER_OUT[info.car.Name] then
+                local pos = seat.Position
+                table.insert(list, {
+                    car = seat,
+                    seat = seat,
+                    dist = (pos - rootPos).Magnitude
+                })
             else
-                pos = seat.Position
+                local pos
+                if info.car:IsA("Model") and info.car.PrimaryPart then
+                    pos = info.car.PrimaryPart.Position
+                else
+                    pos = seat.Position
+                end
+                table.insert(list, {
+                    car = info.car,
+                    seat = seat,
+                    dist = (pos - rootPos).Magnitude
+                })
             end
-            table.insert(list, {
-                car = info.car,
-                seat = seat,
-                dist = (pos - rootPos).Magnitude
-            })
         else
             VehicleDB[seat] = nil
         end
@@ -300,37 +324,118 @@ _G.AUTELPRO_SPECTRE.lastCar = lastCar
 _G.AUTELPRO_SPECTRE.lastSeat = lastSeat
 _G.AUTELPRO_SPECTRE.setLastTarget = setLastTarget
 
+-- MANUAL ACQUISITION: user selects from scrollable list on the right
 local function ACQUIRE()
     moduleTransition(function()
         status.Text = "Status: ACQ // ACTIVE"
-        setText("<b>ACQUISITION SUITE</b>\n\nScanning for vehicle signatures...")
+        setText("<b>ACQUISITION SUITE</b>\n\nScan complete.\nSelect a vehicle from the list on the right to lock target.")
         progressLabel.Text = ""
-        for i = 1,12 do
-            progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
-            task.wait(0.04)
-        end
+
         local list = buildVehicleList()
         if #list == 0 then
             setText("<b>ACQUISITION SUITE</b>\n\nNo vehicles detected in AO.")
             status.Text = "Status: ACQ // COLD"
             return
         end
-        local entry = list[1]
-        local car = entry.car
-        local dist = math.floor(entry.dist)
-        setLastTarget(entry)
-        setText(("<b>ACQUISITION SUITE</b>\n\nTarget locked:\n%s\n\nRange: <font color='rgb(220,40,40)'>%d studs</font>"):format(car.Name,dist))
-        status.Text = "Status: ACQ // LOCKED"
+
+        local y = 0
+        for index,entry in ipairs(list) do
+            local car = entry.car
+            local dist = math.floor(entry.dist)
+
+            local btn = Instance.new("TextButton", scrollFrame)
+            btn.Size = UDim2.new(1,-20,0,32)
+            btn.Position = UDim2.new(0,10,0,y)
+            btn.BackgroundColor3 = Color3.fromRGB(15,15,22)
+            btn.Font = Enum.Font.Gotham
+            btn.TextScaled = true
+            btn.RichText = true
+            btn.TextColor3 = Color3.fromRGB(240,240,245)
+            btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+
+            btn.MouseEnter:Connect(function()
+                tween(btn,{BackgroundColor3 = CFG.Col},0.15):Play()
+            end)
+            btn.MouseLeave:Connect(function()
+                tween(btn,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
+            end)
+
+            btn.MouseButton1Click:Connect(function()
+                setLastTarget(entry)
+                setText(("<b>ACQUISITION SUITE</b>\n\nTarget locked:\n%s\n\nRange: <font color='rgb(220,40,40)'>%d studs</font>"):format(car.Name, dist))
+                status.Text = "Status: ACQ // LOCKED"
+            end)
+
+            y += 36
+        end
+
+        scrollFrame.CanvasSize = UDim2.new(0,0,0,y + 10)
     end)
 end
 
 _G.AUTELPRO_SPECTRE.ACQUIRE = ACQUIRE
 
+-- RADAR‑STYLE SCAN (visual sweep + list, no auto‑lock)
+local function radarPulse()
+    progressLabel.Text = ""
+    for i = 1,12 do
+        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
+        task.wait(0.04)
+    end
+    for i = 12,1,-1 do
+        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
+        task.wait(0.03)
+    end
+end
+
+local function SCAN()
+    moduleTransition(function()
+        status.Text = "Status: SCAN // ACTIVE"
+        setText("<b>TACTICAL SCAN SUITE</b>\n\nInitializing spectral sweep...")
+        radarPulse()
+
+        local list = buildVehicleList()
+        if #list == 0 then
+            setText("<b>TACTICAL SCAN SUITE</b>\n\nNo vehicle signatures detected.\nAO remains cold.")
+            return
+        end
+
+        setText("<b>TACTICAL SCAN SUITE</b>\n\nTargets detected (select in ACQ module to lock):")
+
+        local y = 0
+        for _,entry in ipairs(list) do
+            local car = entry.car
+            local dist = math.floor(entry.dist)
+
+            local line = Instance.new("TextLabel", scrollFrame)
+            line.Size = UDim2.new(1,-20,0,30)
+            line.Position = UDim2.new(0,10,0,y)
+            line.BackgroundTransparency = 1
+            line.Font = Enum.Font.Gotham
+            line.TextScaled = true
+            line.RichText = true
+            line.TextColor3 = Color3.fromRGB(240,240,245)
+            line.TextXAlignment = Enum.TextXAlignment.Left
+            line.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
+
+            y += 34
+        end
+
+        scrollFrame.CanvasSize = UDim2.new(0,0,0,y + 20)
+        status.Text = "Status: SCAN // COMPLETE"
+    end)
+end
+
+_G.AUTELPRO_SPECTRE.SCAN = SCAN
+
+-- ECU stays in Message 1 so spoofing logic is close to DB
 local function ECU()
     moduleTransition(function()
         local car = lastCar()
         if not car or not car.Parent then
-            setText("<b>ECU OVERRIDE SUITE</b>\n\nNo target selected.\nAcquire a vehicle first.")
+            setText("<b>ECU OVERRIDE SUITE</b>\n\nNo target selected.\nUse ACQ to lock a vehicle first.")
             status.Text = "Status: Idle"
             return
         end
@@ -343,6 +448,7 @@ local function ECU()
         task.wait(0.4)
         setText("<b>ECU OVERRIDE SUITE</b>\n\nAwaiting ECU response...\nMonitoring bus traffic...")
         task.wait(0.5)
+
         for _,d in ipairs(car:GetDescendants()) do
             if d:GetAttribute("EngineDisabled") ~= nil then
                 d:SetAttribute("EngineDisabled", false)
@@ -354,8 +460,12 @@ local function ECU()
                 d:SetAttribute("SeatDisabled", false)
             end
         end
+
         local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-        local seat = lastSeat() or car:FindFirstChildWhichIsA("VehicleSeat", true) or car:FindFirstChildWhichIsA("Seat", true)
+        local seat = lastSeat()
+            or car:FindFirstChildWhichIsA("VehicleSeat", true)
+            or car:FindFirstChildWhichIsA("Seat", true)
+
         if hum and seat then
             hum.Sit = false
             task.wait()
@@ -369,6 +479,7 @@ local function ECU()
                 hum.Sit = true
             end
         end
+
         progressLabel.Text = "<font color='rgb(255,60,60)'>▂▂▂▂▂▂▂▂▂▂</font>"
         setText(("<b>ECU OVERRIDE SUITE</b>\n\nVehicle: %s\n\n<font color='rgb(0,255,0)'>BREACH COMPLETE</font>"):format(car.Name))
         status.Text = "Status: ECU // COMPLETE"
@@ -376,19 +487,13 @@ local function ECU()
 end
 
 _G.AUTELPRO_SPECTRE.ECU = ECU
-local function rollingSync()
-    progressLabel.Text = ""
-    for i = 1,10 do
-        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
-        task.wait(0.05)
-    end
-end
-
+-- KEY SUITE (lock / unlock / flash)
 local function doLock(car)
     setText("<b>KEY SUITE</b>\n\nRolling code sync...")
     rollingSync()
     setText("<b>KEY SUITE</b>\n\n<font color='rgb(255,60,60)'>LOCKED</font>\n" .. car.Name)
     status.Text = "Status: LOCK // SPECTRE"
+
     for _,l in ipairs(car:GetDescendants()) do
         if l:IsA("Light") then
             l.Enabled = true
@@ -403,6 +508,7 @@ local function doUnlock(car)
     rollingSync()
     setText("<b>KEY SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCKED</font>\n" .. car.Name)
     status.Text = "Status: UNLOCK // SPECTRE"
+
     for _,l in ipairs(car:GetDescendants()) do
         if l:IsA("Light") then
             l.Enabled = true
@@ -415,6 +521,7 @@ end
 local function doFlash(car)
     setText("<b>KEY SUITE</b>\n\nFlashing lights...")
     status.Text = "Status: FLASH // SPECTRE"
+
     for i = 1,2 do
         for _,l in ipairs(car:GetDescendants()) do
             if l:IsA("Light") then l.Enabled = true end
@@ -425,6 +532,7 @@ local function doFlash(car)
         end
         task.wait(0.15)
     end
+
     setText("<b>KEY SUITE</b>\n\nFlash complete.")
 end
 
@@ -432,7 +540,7 @@ local function KEY()
     moduleTransition(function()
         local car = lastCar()
         if not car or not car.Parent then
-            setText("<b>KEY SUITE</b>\n\nNo target selected.\nAcquire a vehicle first.")
+            setText("<b>KEY SUITE</b>\n\nNo target selected.\nUse ACQ to lock a vehicle first.")
             status.Text = "Status: Idle"
             return
         end
@@ -471,58 +579,7 @@ end
 
 _G.AUTELPRO_SPECTRE.KEY = KEY
 
-local function radarPulse()
-    progressLabel.Text = ""
-    for i = 1,12 do
-        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
-        task.wait(0.04)
-    end
-    for i = 12,1,-1 do
-        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
-        task.wait(0.03)
-    end
-end
-
-local function SCAN()
-    moduleTransition(function()
-        status.Text = "Status: SCAN // ACTIVE"
-        setText("<b>TACTICAL SCAN SUITE</b>\n\nInitializing spectral sweep...")
-        radarPulse()
-
-        local list = buildVehicleList()
-        if #list == 0 then
-            setText("<b>TACTICAL SCAN SUITE</b>\n\nNo vehicle signatures detected.\nAO remains cold.")
-            return
-        end
-
-        setText("<b>TACTICAL SCAN SUITE</b>\n\nTargets detected:\n")
-
-        local y = 0
-        for _,entry in ipairs(list) do
-            local car = entry.car
-            local dist = math.floor(entry.dist)
-
-            local line = Instance.new("TextLabel", scrollFrame)
-            line.Size = UDim2.new(1,-20,0,30)
-            line.Position = UDim2.new(0,10,0,y)
-            line.BackgroundTransparency = 1
-            line.Font = Enum.Font.Gotham
-            line.TextScaled = true
-            line.RichText = true
-            line.TextColor3 = Color3.fromRGB(240,240,245)
-            line.TextXAlignment = Enum.TextXAlignment.Left
-            line.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
-
-            y += 34
-        end
-
-        scrollFrame.CanvasSize = UDim2.new(0,0,0,y + 20)
-        status.Text = "Status: SCAN // COMPLETE"
-    end)
-end
-
-_G.AUTELPRO_SPECTRE.SCAN = SCAN
-
+-- EXIT MODULE
 local function EXIT()
     setText("<b>SYSTEM EXIT</b>\n\nCollapsing SPECTRE interface...")
     status.Text = "Status: EXIT // COLLAPSE"
@@ -534,10 +591,11 @@ end
 
 _G.AUTELPRO_SPECTRE.EXIT = EXIT
 
+-- BUTTON PANEL (left side)
 local function makeButton(label, order, callback)
-    local b = Instance.new("TextButton", panel)
+    local b = Instance.new("TextButton", full)
     b.Size = UDim2.new(0,180,0,40)
-    b.Position = UDim2.new(0,10 + ((order-1)*190),0,10)
+    b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
     b.BackgroundColor3 = Color3.fromRGB(15,15,22)
     b.Font = Enum.Font.GothamBold
     b.TextScaled = true
@@ -556,7 +614,6 @@ local function makeButton(label, order, callback)
 end
 
 local function BUILD_BUTTON_PANEL()
-    clearPanel()
     makeButton("ACQUIRE",1,ACQUIRE)
     makeButton("ECU",2,ECU)
     makeButton("KEY",3,KEY)
@@ -566,6 +623,7 @@ end
 
 _G.AUTELPRO_SPECTRE.BUILD_BUTTON_PANEL = BUILD_BUTTON_PANEL
 
+-- WAIT FOR GLOBALS
 repeat task.wait() until _G.AUTELPRO_SPECTRE.tab
 repeat task.wait() until _G.AUTELPRO_SPECTRE.expandToFull
 repeat task.wait() until _G.AUTELPRO_SPECTRE.collapseToCompact
@@ -575,6 +633,7 @@ local expandToFull = _G.AUTELPRO_SPECTRE.expandToFull
 local collapseToCompact = _G.AUTELPRO_SPECTRE.collapseToCompact
 local isFull = _G.AUTELPRO_SPECTRE.isFull
 
+-- INPUT ROUTING
 uis.InputBegan:Connect(function(i)
     if i.KeyCode == CFG.Key then
         if not isFull() then
