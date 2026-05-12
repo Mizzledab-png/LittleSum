@@ -641,3 +641,4 @@ if CFG.UseMobileButton and uis.TouchEnabled then
 
     openBtn.MouseButton1Click:Connect(toggle)
 end
+
