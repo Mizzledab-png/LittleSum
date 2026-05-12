@@ -1,414 +1,552 @@
-repeat task.wait() until game:IsLoaded()
+-------------------------
+-- SECTION 1: UTILITIES
+-------------------------
 
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local uis = game:GetService("UserInputService")
-
-local plr = Players.LocalPlayer
+local plr = game.Players.LocalPlayer
+local uis = game.UserInputService
+local ts = game.TweenService
+local rs = game:GetService("RunService")
 
 local CFG = {
-    Key = Enum.KeyCode.T,
-    Cmd = "!propad",
-    FadeTime = 0.25,
-    Col = Color3.fromRGB(255,60,60),
-    BG_Full = Color3.fromRGB(5,5,10),
-    FullSize = UDim2.new(1,0,1,0),
-    FullPos = UDim2.new(0.5,0,0.5,0)
+    Size = UDim2.new(0,380,0,260),
+    Pos  = UDim2.new(.5,0,.55,0),
+    Key  = Enum.KeyCode.T,
+    Cmd  = "!autel",
+    Col  = Color3.fromRGB(220,40,40),
+    BG   = Color3.fromRGB(10,10,14),
+    Panel= Color3.fromRGB(18,18,24),
+
+    -- DESKTOP ONLY
+    UseMobileButton = false
 }
 
-local function tween(obj, props, t)
-    return TweenService:Create(obj, TweenInfo.new(t or CFG.FadeTime, Enum.EasingStyle.Quad), props)
+local function tween(o,p,t)
+    return ts:Create(o, TweenInfo.new(t or .25, Enum.EasingStyle.Quad), p)
 end
 
--- UI ROOT
-local gui = Instance.new("ScreenGui")
-gui.Name = "AUTEL_PROPAD"
-gui.IgnoreGuiInset = true
-gui.ResetOnSpawn = false
-gui.Parent = plr:WaitForChild("PlayerGui")
-
-plr.CharacterAdded:Connect(function()
-    gui.Parent = plr:WaitForChild("PlayerGui")
-end)
-
-local full = Instance.new("Frame", gui)
-full.Size = CFG.FullSize
-full.Position = CFG.FullPos
-full.AnchorPoint = Vector2.new(.5,.5)
-full.BackgroundColor3 = CFG.BG_Full
-full.BackgroundTransparency = 1
-full.Visible = false
-
-local title = Instance.new("TextLabel", full)
-title.Size = UDim2.new(0.5,0,0,60)
-title.Position = UDim2.new(0.03,0,0.03,0)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextScaled = true
-title.RichText = true
-title.TextColor3 = Color3.fromRGB(240,240,245)
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Text = "<b>AUTEL PROPAD — VEHICLE OPS</b>"
-
-local textLabel = Instance.new("TextLabel", full)
-textLabel.Size = UDim2.new(0.48,0,0.45,0)
-textLabel.Position = UDim2.new(0.03,0,0.12,0)
-textLabel.BackgroundTransparency = 1
-textLabel.Font = Enum.Font.Gotham
-textLabel.TextSize = 20
-textLabel.RichText = true
-textLabel.TextColor3 = Color3.fromRGB(230,230,235)
-textLabel.TextXAlignment = Enum.TextXAlignment.Left
-textLabel.TextYAlignment = Enum.TextYAlignment.Top
-textLabel.TextWrapped = true
-textLabel.Text = ""
-
-local panel = Instance.new("Frame", full)
-panel.Size = UDim2.new(0.42,0,0.78,0)
-panel.Position = UDim2.new(0.55,0,0.12,0)
-panel.BackgroundTransparency = 1
-panel.ClipsDescendants = true
-
-local scroll = Instance.new("ScrollingFrame", panel)
-scroll.Size = UDim2.new(1,0,1,0)
-scroll.CanvasSize = UDim2.new(0,0,0,0)
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-scroll.ScrollBarThickness = 6
-scroll.BackgroundColor3 = Color3.fromRGB(8,8,12)
-scroll.ScrollBarImageColor3 = CFG.Col
-scroll.ClipsDescendants = true
-
-local status = Instance.new("TextLabel", full)
-status.Size = UDim2.new(0.4,0,0,30)
-status.Position = UDim2.new(0.03,0,0.88,0)
-status.BackgroundTransparency = 1
-status.Font = Enum.Font.Gotham
-status.TextScaled = true
-status.RichText = true
-status.TextColor3 = Color3.fromRGB(200,200,210)
-status.TextXAlignment = Enum.TextXAlignment.Left
-status.Text = "Status: Idle"
-
--- OPEN/CLOSE
-local isOpen = false
-
-local function openPropad()
-    if isOpen then return end
-    isOpen = true
-    full.Visible = true
-    tween(full,{BackgroundTransparency = 0})
+local function isValidCarName(name)
+    if not name then return false end
+    name = name:lower()
+    return name ~= "body" and name ~= "model" and name ~= "futon"
 end
 
-local function closePropad()
-    if not isOpen then return end
-    isOpen = false
-    tween(full,{BackgroundTransparency = 1})
-    task.delay(CFG.FadeTime,function()
-        full.Visible = false
-    end)
-end
-
--- VEHICLE DETECTION (BRONX 3)
-local function isSeat(obj)
-    if obj:IsA("VehicleSeat") or obj:IsA("Seat") then return true end
-    local n = obj.Name:lower()
-    return n:find("seat") or n:find("driver") or n:find("pilot")
-end
-
-local BAD_NAMES = {
-    ["ensure"] = true,
-    ["futon"] = true,
-    ["model"] = true,
-    ["body"] = true,
-    ["part"] = true,
-    ["seat"] = true,
-    ["partyst"] = true,
-}
-
-local VehicleCache = {}
-
-local function classifyVehicle(model)
-    if VehicleCache[model] ~= nil then
-        return VehicleCache[model]
-    end
-
-    if BAD_NAMES[model.Name:lower()] then
-        VehicleCache[model] = false
-        return false
-    end
-
-    local hasSeat = false
-    local partCount = 0
-
-    for _,d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") then
-            partCount += 1
-        elseif isSeat(d) then
-            hasSeat = true
-        end
-        if partCount >= 4 and hasSeat then
-            VehicleCache[model] = true
-            return true
-        end
-    end
-
-    VehicleCache[model] = false
-    return false
-end
-
-local function resolveVehicle(seat)
-    local parent = seat.Parent
-    while parent and parent ~= workspace do
-        if parent:IsA("Model") and classifyVehicle(parent) then
-            return parent
-        end
-        parent = parent.Parent
-    end
-    return seat
-end
-
--- VEHICLE DB
-local VehicleDB = {}
-
-local function registerSeat(obj)
-    if not isSeat(obj) then return end
-
-    local parent = obj.Parent
-    while parent and parent ~= workspace do
-        if parent:IsA("Model") then
-            VehicleCache[parent] = nil
-            classifyVehicle(parent)
-        end
-        parent = parent.Parent
-    end
-
-    VehicleDB[obj] = {
-        seat = obj,
-        car = resolveVehicle(obj)
-    }
-end
-
-local function unregisterSeat(inst)
-    VehicleDB[inst] = nil
-end
-
-task.spawn(function()
-    for _,obj in ipairs(workspace:GetDescendants()) do
-        registerSeat(obj)
-    end
-end)
-
-workspace.DescendantAdded:Connect(function(inst)
-    if isSeat(inst) then
-        registerSeat(inst)
-    elseif inst:IsA("Model") then
-        VehicleCache[inst] = nil
-        classifyVehicle(inst)
-    end
-end)
-
-workspace.DescendantRemoving:Connect(unregisterSeat)
-
--- SAFE POSITION
-local function getCarPosition(car, seat)
-    if car:IsA("Model") then
-        if car.PrimaryPart then
-            return car.PrimaryPart.Position
-        end
-        for _,child in ipairs(car:GetDescendants()) do
-            if child:IsA("BasePart") then
-                return child.Position
-            end
-        end
-    end
-    return seat.Position
-end
-
--- BUILD LIST
-local function buildList()
-    local list = {}
-    local char = plr.Character or plr.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart")
-    local rootPos = root.Position
-
-    for seat,info in pairs(VehicleDB) do
-        local car = info.car
-        if car and car.Parent then
-            local pos = getCarPosition(car, seat)
-            table.insert(list,{
-                car = car,
-                seat = seat,
-                dist = (pos - rootPos).Magnitude
-            })
-        end
-    end
-
-    table.sort(list,function(a,b) return a.dist < b.dist end)
-    return list
-end
-
--- DIST BAR
-local function makeBar(dist)
-    local maxDist = 300
-    local pct = math.clamp(dist / maxDist, 0, 1)
-
-    local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(0.6,0,0,6)
-    bar.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    bar.BorderSizePixel = 0
-
-    local fill = Instance.new("Frame", bar)
-    fill.Size = UDim2.new(pct,0,1,0)
-    fill.BorderSizePixel = 0
-
-    if pct < 0.33 then
-        fill.BackgroundColor3 = Color3.fromRGB(0,255,0)
-    elseif pct < 0.66 then
-        fill.BackgroundColor3 = Color3.fromRGB(255,200,0)
+local function getSignalBars(dist)
+    if dist <= 30 then
+        return "<font color='rgb(0,255,0)'>▂▃▅</font>"
+    elseif dist <= 100 then
+        return "<font color='rgb(255,255,0)'>▂▃</font>"
+    elseif dist <= 199 then
+        return "<font color='rgb(255,255,0)'>▂</font>"
     else
-        fill.BackgroundColor3 = Color3.fromRGB(255,0,0)
+        return "<font color='rgb(255,0,0)'>▂</font>"
+    end
+end
+
+local function getProgressBar(pct)
+    local filled = math.floor(pct/10)
+    local empty = 10 - filled
+    local bar = ""
+
+    for _ = 1,filled do
+        bar = bar .. "<font color='rgb(0,255,0)'>▂</font>"
+    end
+    for _ = 1,empty do
+        bar = bar .. "<font color='rgb(60,60,60)'>▂</font>"
     end
 
     return bar
 end
 
--- TARGET + TRACKING
-local lastTarget = nil
-local trackedCar = nil
-local trackedSeat = nil
-
-local function ACQUIRE()
-    scroll:ClearAllChildren()
-    textLabel.Text = "<b>TARGET SELECTION</b>\nSelect a vehicle."
-    status.Text = "Status: ACQ // ACTIVE"
-
-    local list = buildList()
-    local y = 0
-
-    for _,entry in ipairs(list) do
-        local car = entry.car
-        local dist = math.floor(entry.dist)
-
-        local btn = Instance.new("TextButton", scroll)
-        btn.Size = UDim2.new(1,-20,0,40)
-        btn.Position = UDim2.new(0,10,0,y)
-        btn.BackgroundColor3 = Color3.fromRGB(15,15,22)
-        btn.Font = Enum.Font.Gotham
-        btn.TextScaled = true
-        btn.RichText = true
-        btn.TextColor3 = Color3.fromRGB(240,240,245)
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.Text = string.format("<b>%s</b> — %d studs", car.Name, dist)
-
-        local bar = makeBar(dist)
-        bar.Position = UDim2.new(0.35,0,0.5,-3)
-        bar.Parent = btn
-
-        btn.MouseButton1Click:Connect(function()
-            lastTarget = entry
-            trackedCar = entry.car
-            trackedSeat = entry.seat
-
-            textLabel.Text = string.format("<b>TARGET LOCKED</b>\n%s\nDistance: %d studs", car.Name, dist)
-            status.Text = "Status: ACQ // LOCKED"
-        end)
-
-        y += 45
-    end
-
-    scroll.CanvasSize = UDim2.new(0,0,0,y)
+local function root()
+    local c = plr.Character or plr.CharacterAdded:Wait()
+    return c:WaitForChild("HumanoidRootPart")
 end
 
--- PERMANENT SEAT UNLOCK + TRACKING
-RunService.Heartbeat:Connect(function()
-    if trackedCar and trackedCar.Parent then
-        for _,d in ipairs(trackedCar:GetDescendants()) do
-            if d:GetAttribute("SeatDisabled") ~= nil then d:SetAttribute("SeatDisabled", false) end
-            if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
-            if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
-        end
 
-        local pos = getCarPosition(trackedCar, trackedSeat)
-        local char = plr.Character
-        if char then
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root then
-                local dist = (pos - root.Position).Magnitude
-                status.Text = string.format("Tracking: %s  |  %.1f studs", trackedCar.Name, dist)
+-------------------------------
+-- SECTION 2: VEHICLE REGISTRY
+-------------------------------
+
+local VM = {cars = {}, primary = {}}
+local lastCar = nil
+
+local function assignPrimaryPart(m)
+    if m.PrimaryPart then return m.PrimaryPart end
+    for _,p in ipairs(m:GetDescendants()) do
+        if p:IsA("BasePart") then
+            m.PrimaryPart = p
+            return p
+        end
+    end
+    return nil
+end
+
+local function registerModel(m)
+    if not m:IsA("Model") then return end
+    if not isValidCarName(m.Name) then return end
+
+    local seat = m:FindFirstChildWhichIsA("VehicleSeat", true)
+    if not seat then return end
+
+    local pp = assignPrimaryPart(m)
+    if not pp then return end
+
+    if not VM.primary[m] then
+        VM.primary[m] = pp
+        table.insert(VM.cars, m)
+    end
+end
+
+workspace.ChildRemoved:Connect(function(m)
+    if VM.primary[m] then
+        VM.primary[m] = nil
+        for i,v in ipairs(VM.cars) do
+            if v == m then
+                table.remove(VM.cars, i)
+                break
             end
         end
     end
+
+    if lastCar == m then
+        lastCar = nil
+        if status then status.Text = "Status: Idle" end
+        if setText then setText("Target lost.\n\nSelect a new vehicle.") end
+    end
 end)
 
--- REPROGRAM
-local function REPROGRAM()
-    if not trackedCar then
-        textLabel.Text = "<b>REPROGRAM</b>\nNo target selected."
-        return
+workspace.DescendantAdded:Connect(function(o)
+    if o:IsA("VehicleSeat") then
+        local m = o:FindFirstAncestorWhichIsA("Model")
+        if m then registerModel(m) end
     end
+end)
 
-    textLabel.Text = "<b>REPROGRAM</b>\nClearing seat restrictions..."
-    status.Text = "Status: ECU // ACTIVE"
-
-    for _,d in ipairs(trackedCar:GetDescendants()) do
-        if d:GetAttribute("SeatDisabled") ~= nil then d:SetAttribute("SeatDisabled", false) end
-        if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
-        if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
+for _,o in ipairs(workspace:GetDescendants()) do
+    if o:IsA("VehicleSeat") then
+        local m = o:FindFirstAncestorWhichIsA("Model")
+        if m then registerModel(m) end
     end
-
-    textLabel.Text = "<b>REPROGRAM COMPLETE</b>\nSeat unlocked.\nObstacles cleared."
-    status.Text = "Status: ECU // COMPLETE"
 end
 
--- BUTTONS
-local function makeButton(label, order, callback)
-    local b = Instance.new("TextButton", full)
-    b.Size = UDim2.new(0,180,0,40)
-    b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
-    b.BackgroundColor3 = Color3.fromRGB(15,15,22)
-    b.Font = Enum.Font.GothamBold
-    b.TextScaled = true
-    b.TextColor3 = Color3.fromRGB(240,240,245)
-    b.Text = label
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-    b.MouseButton1Click:Connect(callback)
-end
 
-local function buildButtons()
-    makeButton("ACQUIRE",1,ACQUIRE)
-    makeButton("REPROGRAM",2,REPROGRAM)
-    makeButton("EXIT",3,function()
-        scroll:ClearAllChildren()
-        closePropad()
+-------------------------------------
+-- SECTION 3: GUI FRAMEWORK (DESKTOP)
+-------------------------------------
+
+local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+
+local tab = Instance.new("Frame", gui)
+tab.Size = CFG.Size
+tab.Position = CFG.Pos
+tab.AnchorPoint = Vector2.new(.5,.5)
+tab.BackgroundColor3 = CFG.BG
+tab.Visible = false
+Instance.new("UICorner", tab).CornerRadius = UDim.new(0,16)
+
+local st = Instance.new("UIStroke", tab)
+st.Thickness = 2
+st.Color = CFG.Col
+st.Transparency = .2
+
+-- Desktop Dragging
+local drag, ds, sp
+tab.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        drag = true
+        ds = i.Position
+        sp = tab.Position
+    end
+end)
+
+tab.InputChanged:Connect(function(i)
+    if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = i.Position - ds
+        tab.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+    end
+end)
+
+uis.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        drag = false
+    end
+end)
+
+local main = Instance.new("Frame", tab)
+main.Size = UDim2.new(1,-20,1,-20)
+main.Position = UDim2.new(0,10,0,10)
+main.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1,0,0,26)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = Color3.new(1,1,1)
+title.TextScaled = true
+title.Text = "AUTEL PROPAD"
+
+local acc = Instance.new("Frame", main)
+acc.Size = UDim2.new(1,0,0,2)
+acc.Position = UDim2.new(0,0,0,28)
+acc.BackgroundColor3 = CFG.Col
+
+local nav = Instance.new("Frame", main)
+nav.Size = UDim2.new(0,90,1,-36)
+nav.Position = UDim2.new(0,0,0,34)
+nav.BackgroundTransparency = 1
+
+local panel = Instance.new("Frame", main)
+panel.Size = UDim2.new(1,-100,1,-36)
+panel.Position = UDim2.new(0,100,0,34)
+panel.BackgroundColor3 = CFG.Panel
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0,10)
+
+local txt = Instance.new("TextLabel", panel)
+txt.Size = UDim2.new(1,-16,0,100)
+txt.Position = UDim2.new(0,8,0,8)
+txt.BackgroundTransparency = 1
+txt.Font = Enum.Font.Gotham
+txt.TextColor3 = Color3.fromRGB(240,240,245)
+txt.TextWrapped = true
+txt.TextScaled = true
+txt.RichText = true
+txt.TextXAlignment = Enum.TextXAlignment.Left
+txt.TextYAlignment = Enum.TextYAlignment.Top
+txt.Text = "Select a module on the left."
+
+local function setText(t)
+    tween(txt,{TextTransparency=1},.1):Play()
+    task.delay(.11,function()
+        txt.Text = t
+        tween(txt,{TextTransparency=0},.15):Play()
     end)
 end
 
--- INPUT
-uis.InputBegan:Connect(function(i)
-    if i.KeyCode == CFG.Key then
-        if not isOpen then
-            openPropad()
-            textLabel.Text = "<b>AUTEL PROPAD</b>\nSelect a module."
-            status.Text = "Status: READY"
-            buildButtons()
-        else
-            closePropad()
-        end
-    end
-end)
+local progressLabel = Instance.new("TextLabel", panel)
+progressLabel.Size = UDim2.new(1,-16,0,30)
+progressLabel.Position = UDim2.new(0,8,0,140)
+progressLabel.BackgroundTransparency = 1
+progressLabel.Font = Enum.Font.Gotham
+progressLabel.TextScaled = true
+progressLabel.RichText = true
+progressLabel.TextColor3 = Color3.fromRGB(255,255,255)
+progressLabel.TextXAlignment = Enum.TextXAlignment.Left
+progressLabel.Text = ""
 
-plr.Chatted:Connect(function(msg)
-    msg = msg:lower()
-    if msg == CFG.Cmd then
-        if not isOpen then
-            openPropad()
-            textLabel.Text = "<b>AUTEL PROPAD</b>\nSelect a module."
-            status.Text = "Status: READY"
-            buildButtons()
-        else
-            closePropad()
+local status = Instance.new("TextLabel", nav)
+status.Size = UDim2.new(1,0,0,20)
+status.Position = UDim2.new(0,0,0,(4*34)+4)
+status.BackgroundTransparency = 1
+status.Font = Enum.Font.Gotham
+status.TextScaled = true
+status.TextColor3 = Color3.fromRGB(200,200,200)
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Text = "Status: Idle"
+
+local sonarList = Instance.new("ScrollingFrame", panel)
+sonarList.Size = UDim2.new(1,-16,1,-140)
+sonarList.Position = UDim2.new(0,8,0,110)
+sonarList.BackgroundTransparency = 1
+sonarList.BorderSizePixel = 0
+sonarList.CanvasSize = UDim2.new(0,0,0,0)
+sonarList.ScrollBarThickness = 4
+sonarList.Visible = false
+
+local listLayout = Instance.new("UIListLayout", sonarList)
+listLayout.Padding = UDim.new(0,4)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+
+-------------------------------------
+-- SECTION 4: CORE MODULES
+-------------------------------------
+
+local activeBillboard = nil
+local liveUpdater = nil
+local listUpdater = nil
+local progressUpdater = nil
+
+local function disconnectConn(c)
+    if c then c:Disconnect() end
+end
+
+local function clearSonarUI()
+    sonarList.Visible = false
+    sonarList.CanvasSize = UDim2.new(0,0,0,0)
+
+    for _,v in ipairs(sonarList:GetChildren()) do
+        if v:IsA("TextButton") then
+            v:Destroy()
         end
     end
-end)
+
+    if activeBillboard then
+        activeBillboard:Destroy()
+        activeBillboard = nil
+    end
+
+    disconnectConn(liveUpdater)
+    disconnectConn(listUpdater)
+    disconnectConn(progressUpdater)
+
+    liveUpdater = nil
+    listUpdater = nil
+    progressUpdater = nil
+
+    progressLabel.Text = ""
+end
+
+local function showTargetUI(car)
+    if activeBillboard then activeBillboard:Destroy() end
+    disconnectConn(liveUpdater)
+    disconnectConn(progressUpdater)
+    progressLabel.Text = ""
+
+    local p = VM.primary[car]
+    if not p then return end
+
+    local pct = 0
+    progressUpdater = rs.Heartbeat:Connect(function()
+        if pct < 100 then
+            pct = math.min(pct + 2, 100)
+            progressLabel.Text = getProgressBar(pct)
+        else
+            progressLabel.Text = "<font color='rgb(0,255,0)'>COMPLETE</font>"
+            disconnectConn(progressUpdater)
+            progressUpdater = nil
+
+            local bb = Instance.new("BillboardGui")
+            bb.Size = UDim2.new(0,150,0,45)
+            bb.AlwaysOnTop = true
+            bb.Adornee = p
+            bb.Parent = car
+            activeBillboard = bb
+
+            local lb = Instance.new("TextLabel", bb)
+            lb.Size = UDim2.new(1,0,1,0)
+            lb.BackgroundTransparency = 1
+            lb.Font = Enum.Font.GothamBold
+            lb.TextScaled = true
+            lb.TextColor3 = Color3.fromRGB(255,60,60)
+
+            liveUpdater = rs.Heartbeat:Connect(function()
+                if not car.Parent then
+                    lb.Text = "Lost Target"
+                    return
+                end
+
+                local ok, r = pcall(root)
+                if not ok or not r or not r.Parent then
+                    lb.Text = car.Name .. "\nN/A"
+                    return
+                end
+
+                local d = math.floor((p.Position - r.Position).Magnitude)
+                lb.Text = ("%s\n%d studs"):format(car.Name, d)
+            end)
+        end
+    end)
+end
+
+local function buildVehicleList()
+    local ok, r = pcall(root)
+    if not ok or not r or not r.Parent then return {} end
+
+    local list = {}
+    for _,m in ipairs(VM.cars) do
+        local p = VM.primary[m]
+        if p and m.Parent then
+            local d = (p.Position - r.Position).Magnitude
+            table.insert(list, {car = m, dist = d})
+        end
+    end
+
+    table.sort(list, function(a,b)
+        return a.dist < b.dist
+    end)
+
+    return list
+end
+
+
+-------------------------------------------------
+-- CONNECTIONS MODULE
+-------------------------------------------------
+
+local function CONNECTIONS()
+    clearSonarUI()
+
+    local list = buildVehicleList()
+    if #list == 0 then
+        setText("CONNECTIONS MODE\n\nNo vehicles detected.")
+        return
+    end
+
+    setText("CONNECTIONS MODE\n\nSelect a target below:")
+    sonarList.Visible = true
+
+    local buttons = {}
+
+    for _,e in ipairs(list) do
+        local b = Instance.new("TextButton", sonarList)
+        b.Size = UDim2.new(1,0,0,22)
+        b.BackgroundTransparency = 1
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Font = Enum.Font.Gotham
+        b.TextSize = 14
+        b.RichText = true
+        b.TextXAlignment = Enum.TextXAlignment.Left
+
+        b.Text = string.format("%s  %s  (%d studs)",
+            e.car.Name,
+            getSignalBars(e.dist),
+            math.floor(e.dist)
+        )
+
+        buttons[e.car] = b
+
+        b.MouseButton1Click:Connect(function()
+            lastCar = e.car
+            clearSonarUI()
+            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Reprogram Progression</font>"):format(e.car.Name))
+            showTargetUI(e.car)
+        end)
+    end
+
+    sonarList.CanvasSize = UDim2.new(0,0,0,#list * 26)
+
+    disconnectConn(listUpdater)
+    listUpdater = rs.Heartbeat:Connect(function()
+        local ok, r = pcall(root)
+        if not ok or not r or not r.Parent then return end
+
+        for car,button in pairs(buttons) do
+            if car and car.Parent then
+                local p = VM.primary[car]
+                if p then
+                    local d = math.floor((p.Position - r.Position).Magnitude)
+                    button.Text = string.format("%s  %s  (%d studs)",
+                        car.Name,
+                        getSignalBars(d),
+                        d
+                    )
+                end
+            else
+                button.Text = (car and car.Name or "Unknown") .. " (lost)"
+            end
+        end
+    end)
+end
+
+
+-------------------------------------------------
+-- REPROGRAM MODULE
+-------------------------------------------------
+
+local function REPROGRAM()
+    clearSonarUI()
+
+    if not lastCar or not lastCar.Parent then
+        setText("REPROGRAM MODE\n\nNo target selected.\nUse Connections first.")
+        status.Text = "Status: Idle"
+        return
+    end
+
+    local parts = {}
+    for _,d in ipairs(lastCar:GetDescendants()) do
+        if d:IsA("BasePart") or d:IsA("Seat") or d:IsA("VehicleSeat") then
+            table.insert(parts, d)
+        end
+    end
+
+    local index = 1
+    local conn
+    conn = rs.Heartbeat:Connect(function()
+        if index > #parts then
+            conn:Disconnect()
+            conn = nil
+            return
+        end
+
+        local d = parts[index]
+        if d and d.Parent then
+            pcall(function()
+                if d:IsA("BasePart") then
+                    d.Anchored = false
+                end
+            end)
+
+            pcall(function()
+                if d:GetAttribute("EngineDisabled") ~= nil then
+                    d:SetAttribute("EngineDisabled", false)
+                end
+            end)
+
+            pcall(function()
+                if d:GetAttribute("Immobilized") ~= nil then
+                    d:SetAttribute("Immobilized", false)
+                end
+            end)
+        end
+
+        index += 1
+    end)
+
+    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key Stolen."):format(lastCar.Name))
+    status.Text = "Status: Spoofed"
+end
+
+
+-------------------------------------------------
+-- SCAN MODULE
+-------------------------------------------------
+
+local function SCAN()
+    clearSonarUI()
+
+    local list = buildVehicleList()
+    if #list == 0 then
+        setText("SCAN MODE\n\nNo vehicles detected.")
+        status.Text = "Status: Scan complete (0)"
+        return
+    end
+
+    local count = #list
+    local nearest = list[1]
+    local farthest = list[#list]
+
+    local sum = 0
+    for _,e in ipairs(list) do
+        sum += e.dist
+    end
+
+    local avg = math.floor(sum / count)
+
+    local text = string.format(
+        "SCAN MODE\n\nVehicles detected: %d\n\nNearest: %s (%.0f studs)\nFarthest: %s (%.0f studs)\nAverage distance: %d studs",
+        count,
+        nearest.car.Name, nearest.dist,
+        farthest.car.Name, farthest.dist,
+        avg
+    )
+
+    setText(text)
+    status.Text = "Status: Scan complete ("..count..")"
+end
+
+
+-------------------------------------
+-- SECTION 5: SPOOF KEY MODULE
+-------------------------------------
+
+local function SPOOFKEY()
+    clearSonarUI()
+
+    if not lastCar or not lastCar.Parent then
+        setText("SPOOF KEY MODE\n\nNo target selected.\nUse Connections first.")
+        status.Text = "Status: Idle"
+        return
+    end
