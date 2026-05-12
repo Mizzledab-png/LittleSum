@@ -81,11 +81,19 @@ local function registerModel(m)
 end
 
 workspace.ChildRemoved:Connect(function(m)
+    -- remove from registry
     if VM.primary[m] then
         VM.primary[m] = nil
         for i,v in ipairs(VM.cars) do
             if v == m then table.remove(VM.cars, i) break end
         end
+    end
+
+    -- NEW: clear lastCar if the selected vehicle disappears
+    if lastCar == m then
+        lastCar = nil
+        status.Text = "Status: Idle"
+        setText("Target lost.\n\nSelect a new vehicle.")
     end
 end)
 
@@ -278,7 +286,7 @@ local function showTargetUI(car)
     local pct = 0
     progressUpdater = rs.Heartbeat:Connect(function()
         if pct < 100 then
-            pct += 2
+            pct = math.min(pct + 2, 100)
             progressLabel.Text = getProgressBar(pct)
         else
             progressLabel.Text = "<font color='rgb(0,255,0)'>COMPLETE</font>"
@@ -406,15 +414,52 @@ local function REPROGRAM()
         return
     end
 
+    -- collect all relevant parts first
+    local parts = {}
     for _,d in ipairs(lastCar:GetDescendants()) do
-        if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = false end
-        if d:IsA("BasePart") then d.Anchored = false end
-        if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
-        if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
+        if d:IsA("BasePart") or d:IsA("Seat") or d:IsA("VehicleSeat") then
+            table.insert(parts, d)
+        end
     end
 
-    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key spoofed."):format(lastCar.Name))
-    status.Text = "Status: Reprogrammed"
+    -- apply changes gradually to avoid detection
+    local index = 1
+    local conn
+    conn = rs.Heartbeat:Connect(function()
+        if index > #parts then
+            conn:Disconnect()
+            conn = nil
+            return
+        end
+
+        local d = parts[index]
+        if d and d.Parent then
+            -- unanchor safely
+            pcall(function()
+                if d:IsA("BasePart") then
+                    d.Anchored = false
+                end
+            end)
+
+            -- restore attributes quietly
+            pcall(function()
+                if d:GetAttribute("EngineDisabled") ~= nil then
+                    d:SetAttribute("EngineDisabled", false)
+                end
+            end)
+
+            pcall(function()
+                if d:GetAttribute("Immobilized") ~= nil then
+                    d:SetAttribute("Immobilized", false)
+                end
+            end)
+        end
+
+        index += 1
+    end)
+
+    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Sync complete."):format(lastCar.Name))
+    status.Text = "Status: Synced"
 end
 
 -- SCAN MODULE
