@@ -439,7 +439,6 @@ end
 -------------------------------------------------
 -- REPROGRAM MODULE
 -------------------------------------------------
-
 local function REPROGRAM()
     clearSonarUI()
 
@@ -449,50 +448,28 @@ local function REPROGRAM()
         return
     end
 
-    local parts = {}
-    for _,d in ipairs(lastCar:GetDescendants()) do
-        if d:IsA("BasePart") or d:IsA("Seat") or d:IsA("VehicleSeat") then
-            table.insert(parts, d)
+    for _, d in ipairs(lastCar:GetDescendants()) do
+        if d:IsA("VehicleSeat") or d:IsA("Seat") then
+            d.Disabled = false
+            d:Sit(nil)
+        end
+
+        if d:IsA("BasePart") then
+            d.Anchored = false
+        end
+
+        if d:GetAttribute("EngineDisabled") ~= nil then
+            d:SetAttribute("EngineDisabled", false)
+        end
+
+        if d:GetAttribute("Immobilized") ~= nil then
+            d:SetAttribute("Immobilized", false)
         end
     end
-
-    local index = 1
-    local conn
-    conn = rs.Heartbeat:Connect(function()
-        if index > #parts then
-            conn:Disconnect()
-            conn = nil
-            return
-        end
-
-        local d = parts[index]
-        if d and d.Parent then
-            pcall(function()
-                if d:IsA("BasePart") then
-                    d.Anchored = false
-                end
-            end)
-
-            pcall(function()
-                if d:GetAttribute("EngineDisabled") ~= nil then
-                    d:SetAttribute("EngineDisabled", false)
-                end
-            end)
-
-            pcall(function()
-                if d:GetAttribute("Immobilized") ~= nil then
-                    d:SetAttribute("Immobilized", false)
-                end
-            end)
-        end
-
-        index += 1
-    end)
 
     setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key Stolen."):format(lastCar.Name))
     status.Text = "Status: Spoofed"
 end
-
 -------------------------------------------------
 -- SCAN MODULE
 -------------------------------------------------
@@ -704,170 +681,7 @@ local function SPOOFKEY()
         end)
     end)
 end
--------------------------------------
--- SECTION 6: ENCRYPTED KEY FOB MODULE
--------------------------------------
 
-local function ENCRYPTEDKEY()
-    clearSonarUI()
-
-    if not lastCar or not lastCar.Parent then
-        setText("ENCRYPTED KEY FOB\n\nNo target selected.\nUse Connections first.")
-        status.Text = "Status: Idle"
-        return
-    end
-
-    local p = VM.primary[lastCar]
-    if not p then
-        setText("ENCRYPTED KEY FOB\n\nVehicle missing primary part.")
-        return
-    end
-
-    -- distance check
-    local ok, r = pcall(root)
-    if not ok or not r or not r.Parent then return end
-
-    local dist = (p.Position - r.Position).Magnitude
-    if dist > 120 then
-        setText("ENCRYPTED KEY FOB\n\nOut of range.\nMove closer to the vehicle.")
-        status.Text = "Status: Out of range"
-        return
-    end
-
-    -- rolling code seed
-    local seed = lastCar:GetAttribute("KeySeed")
-    if not seed then
-        seed = math.random(100000,999999)
-        lastCar:SetAttribute("KeySeed", seed)
-    end
-
-    -- generate challenge
-    local challenge = math.random(10000,99999)
-    lastCar:SetAttribute("Challenge", challenge)
-
-    setText((
-        "ENCRYPTED KEY FOB\n\nVehicle: %s\nRange OK (%d studs)\n\nChallenge Code: %d\n\nSelect an action:"
-    ):format(lastCar.Name, math.floor(dist), challenge))
-
-    status.Text = "Status: Encrypted Ready"
-
-    -- UI button creator
-    local function makeAction(name, order, callback)
-        local b = Instance.new("TextButton", panel)
-        b.Size = UDim2.new(1,-16,0,30)
-        b.Position = UDim2.new(0,8,0,180 + (order*34))
-        b.BackgroundColor3 = Color3.fromRGB(20,20,26)
-        b.Font = Enum.Font.GothamBold
-        b.TextColor3 = Color3.fromRGB(240,240,245)
-        b.TextScaled = true
-        b.Text = name
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-
-        b.MouseEnter:Connect(function()
-            tween(b,{BackgroundColor3=CFG.Col},.15):Play()
-        end)
-
-        b.MouseLeave:Connect(function()
-            tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
-        end)
-
-        b.MouseButton1Click:Connect(callback)
-    end
-
-    -- encryption function (simple rolling hash)
-    local function encryptResponse(seed, challenge)
-        return (seed * 7 + challenge * 13) % 999999
-    end
-
-    -- verify handshake
-    local function verify()
-        local storedSeed = lastCar:GetAttribute("KeySeed")
-        local storedChallenge = lastCar:GetAttribute("Challenge")
-        local expected = encryptResponse(storedSeed, storedChallenge)
-        return expected
-    end
-
-    -------------------------------------------------
-    -- ACTION: UNLOCK (ENCRYPTED)
-    -------------------------------------------------
-    makeAction("Unlock (Encrypted)",1,function()
-        local expected = verify()
-        local response = encryptResponse(seed, challenge)
-
-        if response ~= expected then
-            setText("ENCRYPTED KEY FOB\n\nHandshake Failed.\nRolling code mismatch.")
-            status.Text = "Status: Denied"
-            return
-        end
-
-        -- success
-        for _,d in ipairs(lastCar:GetDescendants()) do
-            if d:IsA("BasePart") then
-                pcall(function() d:SetAttribute("Locked", false) end)
-            end
-        end
-
-        -- advance rolling code
-        lastCar:SetAttribute("KeySeed", seed + math.random(5,25))
-
-        setText("ENCRYPTED KEY FOB\n\nDoors Unlocked.\nHandshake Verified.")
-        status.Text = "Status: Unlocked"
-    end)
-
-    -------------------------------------------------
-    -- ACTION: LOCK (ENCRYPTED)
-    -------------------------------------------------
-    makeAction("Lock (Encrypted)",2,function()
-        local expected = verify()
-        local response = encryptResponse(seed, challenge)
-
-        if response ~= expected then
-            setText("ENCRYPTED KEY FOB\n\nHandshake Failed.\nRolling code mismatch.")
-            status.Text = "Status: Denied"
-            return
-        end
-
-        for _,d in ipairs(lastCar:GetDescendants()) do
-            if d:IsA("BasePart") then
-                pcall(function() d:SetAttribute("Locked", true) end)
-            end
-        end
-
-        lastCar:SetAttribute("KeySeed", seed + math.random(5,25))
-
-        setText("ENCRYPTED KEY FOB\n\nDoors Locked.\nHandshake Verified.")
-        status.Text = "Status: Locked"
-    end)
-
-    -------------------------------------------------
-    -- ACTION: REPLAY ATTACK
-    -------------------------------------------------
-    makeAction("Replay Attack",3,function()
-        local storedSeed = lastCar:GetAttribute("KeySeed")
-        local storedChallenge = lastCar:GetAttribute("Challenge")
-
-        local fakeResponse = encryptResponse(storedSeed, storedChallenge)
-
-        if fakeResponse == encryptResponse(seed, challenge) then
-            setText("ENCRYPTED KEY FOB\n\nReplay Attack Failed.\nRolling code already changed.")
-            status.Text = "Status: Replay Blocked"
-        else
-            setText("ENCRYPTED KEY FOB\n\nReplay Attack Blocked.\nVehicle rejected old code.")
-            status.Text = "Status: Blocked"
-        end
-    end)
-
-    -------------------------------------------------
-    -- ACTION: FORCE SYNC
-    -------------------------------------------------
-    makeAction("Force Sync",4,function()
-        local newSeed = math.random(100000,999999)
-        lastCar:SetAttribute("KeySeed", newSeed)
-
-        setText("ENCRYPTED KEY FOB\n\nKey Fob Resynced.\nNew Rolling Code Established.")
-        status.Text = "Status: Synced"
-    end)
-end
 -------------------------------------
 -- SECTION 7: EXIT MODULE
 -------------------------------------
@@ -914,8 +728,7 @@ btn("Connections",   1, CONNECTIONS)
 btn("Reprogram",     2, REPROGRAM)
 btn("Scan",          3, SCAN)
 btn("Spoof Key",     4, SPOOFKEY)
-btn("Encrypted Key", 5, ENCRYPTEDKEY)
-btn("Exit",          6, EXIT)
+btn("Exit",          5, EXIT)
 -------------------------------------
 -- SECTION 9: INPUT HANDLING
 -------------------------------------
