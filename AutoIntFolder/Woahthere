@@ -1,26 +1,12 @@
---========================================================--
--- AUTEL PROPAD V3 — ULTRACLEAN++ ADVANCED EDITION
---  • Refined architecture (namespaced, signals, services)
---  • Advanced SCAN (distance-sorted, richer info, soft transitions)
---  • SPOOF last scanned vehicle (safer + clearer feedback)
---  • SONAR distance HUD (optimized, auto-refresh, color-coded)
---  • ScreenGui + SurfaceGui mirrored tablet
---  • Keybind: T, Chat: !autel
---========================================================--
+-- AUTEL PROPAD V3 — ULTRACLEAN++ FULL UPGRADE PACK
 
------------------------------
--- SERVICES
------------------------------
-local Players        = game:GetService("Players")
-local UserInput      = game:GetService("UserInputService")
-local RunService     = game:GetService("RunService")
-local TweenService   = game:GetService("TweenService")
+local Players      = game:GetService("Players")
+local UserInput    = game:GetService("UserInputService")
+local RunService   = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
-local LocalPlayer    = Players.LocalPlayer
+local LocalPlayer  = Players.LocalPlayer
 
------------------------------
--- CONFIG
------------------------------
 local CONFIG = {
     TabletSize        = UDim2.new(0, 340, 0, 270),
     TabletAnchorPoint = Vector2.new(1, 1),
@@ -34,6 +20,8 @@ local CONFIG = {
     SurfaceGuiName    = "AutelSurface_V3",
 
     ToggleCooldown    = 0.25,
+
+    SonarUpdateInterval = 0.12, -- throttled for FPS
 
     Theme = {
         Background      = Color3.fromRGB(10, 10, 12),
@@ -52,9 +40,8 @@ local CONFIG = {
     }
 }
 
------------------------------
 -- UTILITIES
------------------------------
+
 local function roundify(obj, radius)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, radius)
@@ -90,10 +77,13 @@ end
 local VehicleCache = {}
 local function getPrimary(car)
     if not car then return end
-    if not VehicleCache[car] or not VehicleCache[car].Parent then
-        VehicleCache[car] = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+    local cached = VehicleCache[car]
+    if cached and cached.Parent then
+        return cached
     end
-    return VehicleCache[car]
+    local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+    VehicleCache[car] = primary
+    return primary
 end
 
 local function getAttr(car, name, default)
@@ -111,11 +101,11 @@ function UICleaner:add(obj)
 end
 function UICleaner:clear()
     for _,o in ipairs(self.items) do
-        if o.Destroy then
+        if o and o.Destroy then
             o:Destroy()
         end
     end
-    self.items = {}
+    table.clear(self.items)
 end
 
 local Mode = {current = "NONE"}
@@ -160,9 +150,8 @@ function Signal:fire(...)
     end
 end
 
------------------------------
 -- VEHICLE MANAGER
------------------------------
+
 local function getTopmostModelFromSeat(seat)
     local cur,top = seat, nil
     while cur and cur.Parent do
@@ -252,9 +241,8 @@ function VehicleManager:getCarList()
     return list
 end
 
------------------------------
 -- UI ROOT
------------------------------
+
 local parentGui = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
 
 local screenGui = Instance.new("ScreenGui")
@@ -276,9 +264,8 @@ tablet.Parent = screenGui
 roundify(tablet, 12)
 addStroke(tablet, 1.5, Color3.fromRGB(0,0,0), 0.6)
 
------------------------------
 -- TOP BAR
------------------------------
+
 local topBar = Instance.new("Frame")
 topBar.Name = "TopBar"
 topBar.Size = UDim2.new(1,0,0,32)
@@ -309,9 +296,8 @@ topInfo.TextXAlignment = Enum.TextXAlignment.Right
 topInfo.Text = "Unlinked"
 topInfo.Parent = topBar
 
------------------------------
 -- NAV + MAIN PANEL
------------------------------
+
 local nav = Instance.new("Frame")
 nav.Name = "Nav"
 nav.Size = UDim2.new(0,76,1,-54)
@@ -356,9 +342,8 @@ mainText.TextYAlignment = Enum.TextYAlignment.Top
 mainText.Text = "Select a module on the left."
 mainText.Parent = mainPanel
 
------------------------------
 -- ARROW BAR
------------------------------
+
 local arrowBar = Instance.new("Frame")
 arrowBar.Name = "ArrowBar"
 arrowBar.Size = UDim2.new(1,0,0,40)
@@ -397,9 +382,8 @@ end
 local prevBtn = makeArrowButton("PrevBtn", "◀", 0.25)
 local nextBtn = makeArrowButton("NextBtn", "▶", 0.75)
 
------------------------------
 -- STATUS BAR
------------------------------
+
 local statusBar = Instance.new("Frame")
 statusBar.Name = "StatusBar"
 statusBar.Size = UDim2.new(1,0,0,22)
@@ -429,9 +413,8 @@ local function setMain(t)
     mainText.Text = t
 end
 
------------------------------
 -- NAV BUTTONS
------------------------------
+
 local navButtons = {}
 
 local function makeNavButton(name, order, label)
@@ -481,10 +464,10 @@ local sonarNav = makeNavButton("SONAR", 3, "SONAR")
 local setNav   = makeNavButton("SET",   4, "SET")
 local exitNav  = makeNavButton("EXIT",  5, "EXIT")
 
------------------------------
 -- LINK STATE + SURFACE MIRROR
------------------------------
+
 local isLinked = false
+local linkedCar = nil
 local surfaceTablet
 
 local function updateLinkStatus()
@@ -546,14 +529,16 @@ local function syncVisibility()
     surfaceTablet.Visible = tablet.Visible
 end
 
------------------------------
--- SONAR MANAGER
------------------------------
+-- SONAR MANAGER (throttled, smaller UI)
+
 local SonarManager = {}
 SonarManager.__index = SonarManager
 
 function SonarManager.new()
-    return setmetatable({cleaner=UICleaner.new()},SonarManager)
+    return setmetatable({
+        cleaner = UICleaner.new(),
+        _accum  = 0
+    }, SonarManager)
 end
 
 function SonarManager:clearAll()
@@ -569,7 +554,7 @@ function SonarManager:createDistanceUI(car)
 
     local gui = Instance.new("BillboardGui")
     gui.Name = "AutelDistanceUI"
-    gui.Size = UDim2.new(0,80,0,28) -- PATCHED (smaller UI)
+    gui.Size = UDim2.new(0,70,0,22) -- smaller UI
     gui.Adornee = primary
     gui.AlwaysOnTop = true
     gui.StudsOffset = Vector3.new(0,4,0)
@@ -580,15 +565,21 @@ function SonarManager:createDistanceUI(car)
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.fromRGB(255,0,0)
     label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 14 -- PATCHED (smaller text)
+    label.TextSize = 12 -- smaller text
     label.Text = "Distance: ???"
     label.Parent = gui
 
     self.cleaner:add(gui)
 end
 
-function SonarManager:update()
+function SonarManager:update(dt)
     if not Mode:is("SONAR") then return end
+
+    self._accum += dt
+    if self._accum < CONFIG.SonarUpdateInterval then
+        return
+    end
+    self._accum = 0
 
     local root = getRoot()
     if not root then
@@ -596,23 +587,63 @@ function SonarManager:update()
         return
     end
 
-    for _,gui in ipairs(self.cleaner.items) do
-        local car = gui.Parent
-        local primary = getPrimary(car)
-        if primary then
-            local label = gui:FindFirstChildWhichIsA("TextLabel")
-            if label then
-                local dist = (primary.Position - root.Position).Magnitude
-                label.Text = "Distance: "..math.floor(dist).." studs"
+    local rootPos = root.Position
+
+    for i = #self.cleaner.items, 1, -1 do
+        local gui = self.cleaner.items[i]
+        if not gui or not gui.Parent then
+            table.remove(self.cleaner.items, i)
+        else
+            local car = gui.Parent
+            local primary = getPrimary(car)
+            if primary then
+                local label = gui:FindFirstChildWhichIsA("TextLabel")
+                if label then
+                    local dist = (primary.Position - rootPos).Magnitude
+                    local dInt = math.floor(dist)
+                    label.Text = "Distance: "..dInt.." studs"
+
+                    if dInt <= 20 then
+                        label.TextColor3 = Color3.fromRGB(0,255,0)
+                    elseif dInt <= 50 then
+                        label.TextColor3 = Color3.fromRGB(255,200,0)
+                    else
+                        label.TextColor3 = Color3.fromRGB(255,80,80)
+                    end
+                end
             end
         end
     end
 end
 
+-- LIVE LINK TELEMETRY
 
------------------------------
+local function updateTelemetry()
+    if not linkedCar or not linkedCar.Parent then
+        linkedCar = nil
+        isLinked = false
+        updateLinkStatus()
+        return
+    end
+
+    local primary = getPrimary(linkedCar)
+    local root = getRoot()
+    if not primary or not root then return end
+
+    local dist = math.floor((primary.Position - root.Position).Magnitude)
+    local locked = tostring(getAttr(linkedCar, "Locked", true))
+
+    syncMain(
+        "LINKED VEHICLE\n\n" ..
+        "Name: " .. linkedCar.Name ..
+        "\nDistance: " .. dist .. " studs" ..
+        "\nLocked: " .. locked ..
+        "\n\nLive telemetry active."
+    )
+end
+
 -- SPOOF LOGIC
------------------------------
+
 local spoofedKeys    = {}
 local lastScannedCar = nil
 
@@ -628,8 +659,38 @@ local function spoofKey(car)
         return
     end
 
+    -- UI: Start cinematic unlock animation
+    syncMain("SPOOF MODULE\n\nInitializing spoof sequence...")
+    syncStatus("Starting...", CONFIG.Theme.StatusWarn)
+
+    -- Flash top bar
+    tween(topBar, {BackgroundColor3 = Color3.fromRGB(255, 200, 0)}, 0.15)
+    task.wait(0.15)
+    tween(topBar, {BackgroundColor3 = CONFIG.Theme.Accent}, 0.15)
+
+    -- Fake decrypt progress
+    for i = 1, 100, math.random(8,14) do
+        syncMain("SPOOF MODULE\n\nDecrypting key...\n"..i.."%")
+        task.wait(0.05)
+    end
+
+    -- Vehicle blink effect
+    for _,p in ipairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then
+            TweenService:Create(p, TweenInfo.new(0.1), {Transparency = 0.5}):Play()
+        end
+    end
+    task.wait(0.1)
+    for _,p in ipairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then
+            TweenService:Create(p, TweenInfo.new(0.1), {Transparency = 0}):Play()
+        end
+    end
+
+    -- Actually spoof the key
     spoofedKeys[code] = true
     isLinked = true
+    linkedCar = car
     updateLinkStatus()
 
     car:SetAttribute("Locked", false)
@@ -638,19 +699,15 @@ local function spoofKey(car)
         if d:IsA("VehicleSeat") or d:IsA("Seat") then
             d.Disabled = false
         end
-
         if d:IsA("BasePart") then
             d.Anchored = false
         end
-
         if d:GetAttribute("EngineDisabled") ~= nil then
             d:SetAttribute("EngineDisabled", false)
         end
-
         if d:GetAttribute("Immobilized") ~= nil then
             d:SetAttribute("Immobilized", false)
         end
-
         if d:IsA("Script") or d:IsA("LocalScript") then
             local n = d.Name:lower()
             if n:find("lock") or n:find("immobil") or n:find("engine") then
@@ -659,37 +716,41 @@ local function spoofKey(car)
         end
     end
 
-    syncStatus("Spoofed: "..car.Name, CONFIG.Theme.StatusGood)
+    -- Final UI reveal
+    syncStatus("Unlocked!", CONFIG.Theme.StatusGood)
     syncMain(
         "SPOOF MODULE\n\n"..
-        "Vehicle: "..car.Name..
-        "\nKey spoofed and locks bypassed.\n\n"..
-        "Engine and immobilizer scripts neutralized."
+        "Vehicle: "..car.Name.."\n"..
+        "Key spoofed successfully.\n"..
+        "Locks bypassed.\n"..
+        "Engine systems restored."
     )
 end
 
------------------------------
 -- SCAN STATE
------------------------------
+
 local scanList  = {}
 local scanIndex = 1
 local prevConn, nextConn
 
------------------------------
 -- MODE CONTROLLER
------------------------------
+
 local vehicleManager = VehicleManager.new()
 local sonarManager   = SonarManager.new()
 local ModeChanged    = Signal.new()
 
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(dt)
     safe(function()
-        sonarManager:update()
+        sonarManager:update(dt)
+        if isLinked and linkedCar then
+            updateTelemetry()
+        end
     end)
 end)
 
 local function openScanMode()
     isLinked = false
+    linkedCar = nil
     updateLinkStatus()
     sonarManager:clearAll()
     highlightNav("SCAN")
@@ -705,9 +766,10 @@ local function openScanMode()
     scanList = vehicleManager:getCarList()
 
     local filtered = {}
+    local rootPos = root.Position
     for _,car in ipairs(scanList) do
         local p = getPrimary(car)
-        if p and (p.Position - root.Position).Magnitude <= CONFIG.ScanRadius then
+        if p and (p.Position - rootPos).Magnitude <= CONFIG.ScanRadius then
             table.insert(filtered, car)
         end
     end
@@ -725,7 +787,7 @@ local function openScanMode()
         return
     end
 
-    sortByDistance(root.Position, scanList)
+    sortByDistance(rootPos, scanList)
 
     scanIndex = 1
     lastScannedCar = scanList[1]
@@ -745,7 +807,7 @@ local function openScanMode()
             return
         end
 
-        local dist   = (p.Position - root.Position).Magnitude
+        local dist   = (p.Position - rootPos).Magnitude
         local locked = getAttr(car, "Locked", true)
         local key    = getAttr(car, "KeyCode", "N/A")
 
@@ -786,8 +848,6 @@ local function openScanMode()
 end
 
 local function openSpoofMode()
-    isLinked = false
-    updateLinkStatus()
     sonarManager:clearAll()
     highlightNav("SPOOF")
     ModeChanged:fire("SPOOF")
@@ -811,6 +871,7 @@ end
 
 local function openSonarMode()
     isLinked = false
+    linkedCar = nil
     updateLinkStatus()
     sonarManager:clearAll()
     highlightNav("SONAR")
@@ -840,6 +901,7 @@ end
 
 local function openSettingsMode()
     isLinked = false
+    linkedCar = nil
     updateLinkStatus()
     sonarManager:clearAll()
     highlightNav("SET")
@@ -861,6 +923,7 @@ end
 
 local function exitAndReset()
     isLinked = false
+    linkedCar = nil
     updateLinkStatus()
     sonarManager:clearAll()
 
@@ -885,22 +948,79 @@ local function exitAndReset()
     tablet.BackgroundTransparency = 0
 end
 
------------------------------
 -- NAV BUTTON HOOKS
------------------------------
+
 scanNav.MouseButton1Click:Connect(openScanMode)
 spoofNav.MouseButton1Click:Connect(openSpoofMode)
 sonarNav.MouseButton1Click:Connect(openSonarMode)
 setNav.MouseButton1Click:Connect(openSettingsMode)
 exitNav.MouseButton1Click:Connect(exitAndReset)
 
------------------------------
+-- BOOT ANIMATION MODULE
+
+local function playBootAnimation()
+    local boot = Instance.new("Frame")
+    boot.Size = UDim2.new(1,0,1,0)
+    boot.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    boot.BackgroundTransparency = 1
+    boot.ZIndex = 50
+    boot.Parent = tablet
+    roundify(boot, 12)
+
+    local logo = Instance.new("TextLabel")
+    logo.Size = UDim2.new(1,0,0,60)
+    logo.Position = UDim2.new(0,0,0.35,0)
+    logo.BackgroundTransparency = 1
+    logo.Text = "AUTEL PROPAD V3"
+    logo.TextColor3 = Color3.fromRGB(255,0,0)
+    logo.Font = Enum.Font.GothamBold
+    logo.TextScaled = true
+    logo.TextTransparency = 1
+    logo.ZIndex = 51
+    logo.Parent = boot
+
+    local barBG = Instance.new("Frame")
+    barBG.Size = UDim2.new(0.6,0,0,10)
+    barBG.Position = UDim2.new(0.2,0,0.55,0)
+    barBG.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    barBG.BorderSizePixel = 0
+    barBG.ZIndex = 51
+    barBG.Parent = boot
+    roundify(barBG, 6)
+
+    local barFill = Instance.new("Frame")
+    barFill.Size = UDim2.new(0,0,1,0)
+    barFill.BackgroundColor3 = Color3.fromRGB(255,0,0)
+    barFill.BorderSizePixel = 0
+    barFill.ZIndex = 52
+    barFill.Parent = barBG
+    roundify(barFill, 6)
+
+    tween(boot, {BackgroundTransparency = 0}, 0.25)
+    tween(logo, {TextTransparency = 0}, 0.35)
+
+    for i = 1, 100, math.random(4,10) do
+        barFill.Size = UDim2.new(i/100,0,1,0)
+        syncStatus("Booting "..i.."%", CONFIG.Theme.StatusWarn)
+        task.wait(0.03)
+    end
+
+    tween(boot, {BackgroundTransparency = 1}, 0.3)
+    tween(logo, {TextTransparency = 1}, 0.3)
+    tween(barBG, {BackgroundTransparency = 1}, 0.3)
+    tween(barFill, {BackgroundTransparency = 1}, 0.3)
+    task.wait(0.35)
+
+    boot:Destroy()
+end
+
 -- TABLET TOGGLE
------------------------------
+
 local toggleCooldown = Cooldown.new(CONFIG.ToggleCooldown)
 
 local function resetTabletState()
     isLinked = false
+    linkedCar = nil
     updateLinkStatus()
     sonarManager:clearAll()
     highlightNav("NONE")
@@ -921,9 +1041,10 @@ local function toggleTablet()
     syncVisibility()
 
     if newVisible then
-        resetTabletState()
         tablet.BackgroundTransparency = 1
         tween(tablet, {BackgroundTransparency = 0}, 0.15)
+        playBootAnimation()
+        resetTabletState()
     else
         sonarManager:clearAll()
         prevBtn.Visible = false
