@@ -8,19 +8,6 @@ local CFG = {
     Key = Enum.KeyCode.T,
     Cmd = "!tablet",
     FadeTime = 0.25,
-    Col = Color3.fromHere you go, Lamar — **full rebuilt script with unbreakable detection**, solid background, visible list, no flicker, no seat stabilization, manual selection, and all filters baked in.
-
-```lua
-repeat task.wait() until game:IsLoaded()
-
-local plr = game.Players.LocalPlayer
-local uis = game.UserInputService
-local TweenService = game:GetService("TweenService")
-
-local CFG = {
-    Key = Enum.KeyCode.T,
-    Cmd = "!tablet",
-    FadeTime = 0.25,
     Col = Color3.fromRGB(255,60,60),
     BG_Compact = Color3.fromRGB(10,10,16),
     BG_Full = Color3.fromRGB(5,5,10),
@@ -61,7 +48,7 @@ full.Size = CFG.FullSize
 full.Position = CFG.FullPos
 full.AnchorPoint = Vector2.new(0.5,0.5)
 full.BackgroundColor3 = CFG.BG_Full
-full.BackgroundTransparency = 0 -- solid, not see-through
+full.BackgroundTransparency = 0
 full.Visible = false
 
 -- BACKGROUND GRID
@@ -148,7 +135,7 @@ progressLabel.TextXAlignment = Enum.TextXAlignment.Right
 progressLabel.Text = ""
 progressLabel.ZIndex = 3
 
--- EXPAND / COLLAPSE (NO FLICKER)
+-- EXPAND / COLLAPSE
 local isFull = false
 
 local function expandToFull()
@@ -230,7 +217,7 @@ local function moduleTransition(fn)
     fn()
 end
 
--- DISPLAY FILTER (names that should never show as “car” labels)
+-- DISPLAY FILTER
 local DISPLAY_FILTER = {
     ["PartyST"] = true,
     ["FUTON"] = true,
@@ -259,7 +246,7 @@ local function resolveVehicle(seat)
                 if p:IsA("BasePart") then
                     count += 1
                     if count >= 4 then
-                        return parent -- treat as real vehicle
+                        return parent
                     end
                 end
             end
@@ -267,7 +254,7 @@ local function resolveVehicle(seat)
         parent = parent.Parent
     end
 
-    return seat -- fallback: seat is the vehicle
+    return seat
 end
 
 -- LIVE VEHICLE DATABASE
@@ -472,172 +459,12 @@ local function ECU()
     end)
 end
 
--- KEY SUITE
-local function doLock(car)
-    setText("<b>KEY SUITE</b>\n\nRolling code sync...")
-    progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
-    setText("<b>KEY SUITE</b>\n\n<font color='rgb(255,60,60)'>LOCKED</font>\n" .. car.Name)
-    status.Text = "Status: LOCK // SPECTRE"
-
-    for _,l in ipairs(car:GetDescendants()) do
-        if l:IsA("Light") then
-            l.Enabled = true
-            task.wait(0.1)
-            l.Enabled = false
-        end
-    end
-end
-
-local function doUnlock(car)
-    setText("<b>KEY SUITE</b>\n\nRolling code sync...")
-    progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
-    setText("<b>KEY SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCKED</font>\n" .. car.Name)
-    status.Text = "Status: UNLOCK // SPECTRE"
-
-    for _,l in ipairs(car:GetDescendants()) do
-        if l:IsA("Light") then
-            l.Enabled = true
-            task.wait(0.05)
-            l.Enabled = false
-        end
-    end
-end
-
-local function doFlash(car)
-    setText("<b>KEY SUITE</b>\n\nFlashing lights...")
-    status.Text = "Status: FLASH // SPECTRE"
-
-    for i = 1,2 do
-        for _,l in ipairs(car:GetDescendants()) do
-            if l:IsA("Light") then l.Enabled = true end
-        end
-        task.wait(0.15)
-        for _,l in ipairs(car:GetDescendants()) do
-            if l:IsA("Light") then l.Enabled = false end
-        end
-        task.wait(0.15)
-    end
-
-    setText("<b>KEY SUITE</b>\n\nFlash complete.")
-end
-
-local function KEY()
-    moduleTransition(function()
-        local car = lastCar()
-        if not car or not car.Parent then
-            setText("<b>KEY SUITE</b>\n\nNo target selected.\nUse ACQ to lock a vehicle first.")
-            status.Text = "Status: Idle"
-            return
-        end
-
-        status.Text = "Status: KEY // READY"
-        setText("<b>KEY SUITE</b>\n\nSelect an action for:\n" .. car.Name)
-
-        local function makeKeyButton(label, order, callback)
-            local b = Instance.new("TextButton", full)
-            b.Size = UDim2.new(0,180,0,40)
-            b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
-            b.BackgroundColor3 = Color3.fromRGB(15,15,22)
-            b.Font = Enum.Font.GothamBold
-            b.TextScaled = true
-            b.TextColor3 = Color3.fromRGB(240,240,245)
-            b.Text = label
-            b.ZIndex = 4
-            Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-
-            b.MouseEnter:Connect(function()
-                tween(b,{BackgroundColor3 = CFG.Col},0.15):Play()
-            end)
-            b.MouseLeave:Connect(function()
-                tween(b,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
-            end)
-
-            b.MouseButton1Click:Connect(function()
-                callback(car)
-            end)
-        end
-
-        makeKeyButton("UNLOCK",1,doUnlock)
-        makeKeyButton("LOCK",2,doLock)
-        makeKeyButton("FLASH",3,doFlash)
-    end)
-end
-
--- EXIT MODULE
-local function EXIT()
-    setText("<b>SYSTEM EXIT</b>\n\nCollapsing SPECTRE interface...")
-    status.Text = "Status: EXIT // COLLAPSE"
-    task.wait(0.25)
-    clearPanel()
-    collapseToCompact()
-    status.Text = "Status: Idle"
-end
-
--- LEFT‑SIDE BUTTON PANEL
-local function makeMainButton(label, order, callback)
-    local b = Instance.new("TextButton", full)
-    b.Size = UDim2.new(0,180,0,40)
-    b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
-    b.BackgroundColor3 = Color3.fromRGB(15,15,22)
-    b.Font = Enum.Font.GothamBold
-    b.TextScaled = true
-    b.TextColor3 = Color3.fromRGB(240,240,245)
-    b.Text = label
-    b.ZIndex = 4
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-
-    b.MouseEnter:Connect(function()
-        tween(b,{BackgroundColor3 = CFG.Col},0.15):Play()
-    end)
-    b.MouseLeave:Connect(function()
-        tween(b,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
-    end)
-
-    b.MouseButton1Click:Connect(callback)
-end
-
-local function BUILD_BUTTON_PANEL()
-    makeMainButton("ACQUIRE",1,ACQUIRE)
-    makeMainButton("ECU",2,ECU)
-    makeMainButton("KEY",3,KEY)
-    makeMainButton("SCAN",4,SCAN)
-    makeMainButton("EXIT",5,EXIT)
-end
-
--- INPUT ROUTING
-uis.InputBegan:Connect(function(i)
-    if i.KeyCode == CFG.Key then
-        if not isFull() then
-            expandToFull()
-            setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
-            status.Text = "Status: READY"
-            BUILD_BUTTON_PANEL()
-        else
-            EXIT()
-        end
-    end
-end)
-
-plr.Chatted:Connect(function(msg)
-    msg = msg:lower()
-
-    if msg == CFG.Cmd then
-        if not isFull() then
-            expandToFull()
-            setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
-            status.Text = "Status: READY"
-            BUILD_BUTTON_PANEL()
-        else
-            EXIT()
-        end
-    end
-
-    if msg == "!acq" then ACQUIRE() end
-    if msg == "!ecu" then ECU() end
-    if msg == "!key" then KEY() end
-    if msg == "!scan" then SCAN() end
-    if msg == "!exit" then EXIT() end
-end)
+_G.AUTELPRO_SPECTRE.ACQUIRE = ACQUIRE
+_G.AUTELPRO_SPECTRE.SCAN = SCAN
+_G.AUTELPRO_SPECTRE.ECU = ECU
+_G.AUTELPRO_SPECTRE.lastCar = lastCar
+_G.AUTELPRO_SPECTRE.lastSeat = lastSeat
+_G.AUTELPRO_SPECTRE.setLastTarget = setLastTarget
 -- KEY SUITE
 local function doLock(car)
     setText("<b>KEY SUITE</b>\n\nRolling code sync...")
