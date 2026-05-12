@@ -458,8 +458,8 @@ local function REPROGRAM()
         index += 1
     end)
 
-    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Sync complete."):format(lastCar.Name))
-    status.Text = "Status: Synced"
+    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key Stolen."):format(lastCar.Name))
+    status.Text = "Status: Spoofed"
 end
 
 -- SCAN MODULE
