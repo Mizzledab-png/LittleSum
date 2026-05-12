@@ -2,7 +2,6 @@ repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 local uis = game:GetService("UserInputService")
 
 local plr = Players.LocalPlayer
@@ -128,32 +127,38 @@ local BAD_NAMES = {
     ["PartyST"] = true,
 }
 
-local function isRealVehicle(model)
-    if not model:IsA("Model") then return false end
-    if BAD_NAMES[model.Name] then return false end
+local VehicleCache = {}
 
-    local partCount = 0
+local function classifyVehicle(model)
+    if VehicleCache[model] ~= nil then
+        return VehicleCache[model]
+    end
+
+    if BAD_NAMES[model.Name] then
+        VehicleCache[model] = false
+        return false
+    end
+
     local hasSeat = false
+    local partCount = 0
 
-    for _,d in ipairs(model:GetDescendants()) do
+    for _,d in ipairs(model:GetChildren()) do
         if d:IsA("BasePart") then
             partCount += 1
-        end
-        if d:IsA("VehicleSeat") or d:IsA("Seat") then
+        elseif d:IsA("VehicleSeat") or d:IsA("Seat") then
             hasSeat = true
-        end
-        if partCount >= 4 and hasSeat then
-            return true
         end
     end
 
-    return false
+    local isVehicle = (hasSeat and partCount >= 2)
+    VehicleCache[model] = isVehicle
+    return isVehicle
 end
 
 local function resolveVehicle(seat)
     local parent = seat.Parent
-    while parent do
-        if isRealVehicle(parent) then
+    while parent and parent ~= workspace do
+        if parent:IsA("Model") and classifyVehicle(parent) then
             return parent
         end
         parent = parent.Parent
@@ -168,14 +173,29 @@ local function registerSeat(seat)
 end
 
 local function unregisterSeat(inst)
-    if VehicleDB[inst] then VehicleDB[inst] = nil end
+    VehicleDB[inst] = nil
 end
 
-for _,obj in ipairs(workspace:GetDescendants()) do
-    registerSeat(obj)
-end
+task.spawn(function()
+    for _,obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") then
+            classifyVehicle(obj)
+        end
+    end
 
-workspace.DescendantAdded:Connect(registerSeat)
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        registerSeat(obj)
+    end
+end)
+
+workspace.DescendantAdded:Connect(function(inst)
+    if inst:IsA("Model") then
+        classifyVehicle(inst)
+    elseif inst:IsA("VehicleSeat") or inst:IsA("Seat") then
+        registerSeat(inst)
+    end
+end)
+
 workspace.DescendantRemoving:Connect(unregisterSeat)
 local function buildList()
     local list = {}
