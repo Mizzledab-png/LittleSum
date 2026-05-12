@@ -1,8 +1,9 @@
 --========================================================--
--- AUTEL PROPAD V2 — ULTRACLEAN+ REFINED EDITION
---  • Optimized SCAN (distance-sorted, phone-style)
---  • Optimized SONAR (no workspace scanning)
---  • SPOOF last scanned vehicle
+-- AUTEL PROPAD V3 — ULTRACLEAN++ ADVANCED EDITION
+--  • Refined architecture (namespaced, signals, services)
+--  • Advanced SCAN (distance-sorted, richer info, soft transitions)
+--  • SPOOF last scanned vehicle (safer + clearer feedback)
+--  • SONAR distance HUD (optimized, auto-refresh, color-coded)
 --  • ScreenGui + SurfaceGui mirrored tablet
 --  • Keybind: T, Chat: !autel
 --========================================================--
@@ -14,24 +15,41 @@ local Players        = game:GetService("Players")
 local UserInput      = game:GetService("UserInputService")
 local RunService     = game:GetService("RunService")
 local TweenService   = game:GetService("TweenService")
+
 local LocalPlayer    = Players.LocalPlayer
 
 -----------------------------
 -- CONFIG
 -----------------------------
 local CONFIG = {
-    TabletSize        = UDim2.new(0, 320, 0, 260),
+    TabletSize        = UDim2.new(0, 340, 0, 270),
     TabletAnchorPoint = Vector2.new(1, 1),
-    TabletOffset      = UDim2.new(1, -20, 1, -20),
+    TabletOffset      = UDim2.new(1, -24, 1, -24),
 
-    ScanRadius        = 60,
+    ScanRadius        = 80,
     ToggleKey         = Enum.KeyCode.T,
     ChatCommand       = "!autel",
 
-    VirtualScreenName = "VirtualAutelScreen_V2",
-    SurfaceGuiName    = "AutelSurface_V2",
+    VirtualScreenName = "VirtualAutelScreen_V3",
+    SurfaceGuiName    = "AutelSurface_V3",
 
     ToggleCooldown    = 0.25,
+
+    Theme = {
+        Background      = Color3.fromRGB(10, 10, 12),
+        BackgroundAlt   = Color3.fromRGB(18, 18, 22),
+        Accent          = Color3.fromRGB(200, 40, 40),
+        AccentSoft      = Color3.fromRGB(120, 20, 20),
+        TextPrimary     = Color3.fromRGB(255, 255, 255),
+        TextSecondary   = Color3.fromRGB(190, 190, 190),
+        StatusGood      = Color3.fromRGB(0, 220, 120),
+        StatusWarn      = Color3.fromRGB(255, 200, 0),
+        StatusBad       = Color3.fromRGB(255, 80, 80),
+        NavIdle         = Color3.fromRGB(26, 26, 30),
+        NavActive       = Color3.fromRGB(60, 60, 70),
+        Button          = Color3.fromRGB(40, 40, 48),
+        ButtonHover     = Color3.fromRGB(70, 70, 80),
+    }
 }
 
 -----------------------------
@@ -43,9 +61,19 @@ local function roundify(obj, radius)
     c.Parent = obj
 end
 
+local function addStroke(obj, thickness, color, transparency)
+    local s = Instance.new("UIStroke")
+    s.Thickness = thickness or 1
+    s.Color = color or Color3.fromRGB(0,0,0)
+    s.Transparency = transparency or 0.4
+    s.Parent = obj
+end
+
 local Cooldown = {}
 Cooldown.__index = Cooldown
-function Cooldown.new(t) return setmetatable({time=t,last=0},Cooldown) end
+function Cooldown.new(t)
+    return setmetatable({time = t, last = 0}, Cooldown)
+end
 function Cooldown:ready()
     local now = tick()
     if now - self.last >= self.time then
@@ -75,54 +103,75 @@ end
 
 local UICleaner = {}
 UICleaner.__index = UICleaner
-function UICleaner.new() return setmetatable({items={}},UICleaner) end
-function UICleaner:add(obj) if obj then table.insert(self.items,obj) end end
+function UICleaner.new()
+    return setmetatable({items = {}}, UICleaner)
+end
+function UICleaner:add(obj)
+    if obj then table.insert(self.items, obj) end
+end
 function UICleaner:clear()
     for _,o in ipairs(self.items) do
-        if o.Destroy then o:Destroy() end
+        if o.Destroy then
+            o:Destroy()
+        end
     end
     self.items = {}
 end
 
-local Mode = {current="NONE"}
+local Mode = {current = "NONE"}
 function Mode:set(m) self.current = m end
 function Mode:is(m) return self.current == m end
 
-local function tween(obj, props, time, style)
-    TweenService:Create(
-        obj,
-        TweenInfo.new(time or 0.25, style or Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-        props
-    ):Play()
+local function tween(obj, props, time, style, dir)
+    local ti = TweenInfo.new(
+        time or 0.25,
+        style or Enum.EasingStyle.Sine,
+        dir or Enum.EasingDirection.Out
+    )
+    TweenService:Create(obj, ti, props):Play()
 end
 
 local function safe(fn)
     local ok,err = pcall(fn)
-    if not ok then warn("[AUTEL] Error:",err) end
+    if not ok then
+        warn("[AUTEL] Error:", err)
+    end
 end
 
 local function sortByDistance(rootPos, cars)
     table.sort(cars, function(a,b)
-        local pa,pb = getPrimary(a),getPrimary(b)
+        local pa,pb = getPrimary(a), getPrimary(b)
         if not pa or not pb then return false end
-        return (pa.Position-rootPos).Magnitude < (pb.Position-rootPos).Magnitude
+        return (pa.Position - rootPos).Magnitude < (pb.Position - rootPos).Magnitude
     end)
 end
 
 local Signal = {}
 Signal.__index = Signal
-function Signal.new() return setmetatable({callbacks={}},Signal) end
-function Signal:connect(fn) table.insert(self.callbacks,fn) end
-function Signal:fire(...) for _,fn in ipairs(self.callbacks) do fn(...) end end
+function Signal.new()
+    return setmetatable({callbacks = {}}, Signal)
+end
+function Signal:connect(fn)
+    table.insert(self.callbacks, fn)
+end
+function Signal:fire(...)
+    for _,fn in ipairs(self.callbacks) do
+        fn(...)
+    end
+end
 
 -----------------------------
 -- VEHICLE MANAGER
 -----------------------------
 local function getTopmostModelFromSeat(seat)
-    local cur,top = seat,nil
+    local cur,top = seat, nil
     while cur and cur.Parent do
-        if cur:IsA("Model") then top = cur end
-        if cur.Parent == workspace then break end
+        if cur:IsA("Model") then
+            top = cur
+        end
+        if cur.Parent == workspace then
+            break
+        end
         cur = cur.Parent
     end
     return top
@@ -133,8 +182,8 @@ VehicleManager.__index = VehicleManager
 
 function VehicleManager.new()
     local self = setmetatable({
-        vehicleSeats = {},
-        carRegistered = {},
+        vehicleSeats          = {},
+        carRegistered         = {},
         attributesInitialized = {}
     }, VehicleManager)
 
@@ -163,10 +212,10 @@ function VehicleManager:_hookWorkspace()
             self.carRegistered[obj] = nil
             self.attributesInitialized[obj] = nil
 
-            for i=#self.vehicleSeats,1,-1 do
+            for i = #self.vehicleSeats, 1, -1 do
                 local seat = self.vehicleSeats[i]
                 if not seat.Parent or getTopmostModelFromSeat(seat) == obj then
-                    table.remove(self.vehicleSeats,i)
+                    table.remove(self.vehicleSeats, i)
                 end
             end
         end
@@ -186,7 +235,7 @@ function VehicleManager:ensureAttributes(car)
     self.attributesInitialized[car] = true
 
     if not car:GetAttribute("KeyCode") then
-        car:SetAttribute("KeyCode", tostring(math.random(100000,999999)))
+        car:SetAttribute("KeyCode", tostring(math.random(100000, 999999)))
     end
     if car:GetAttribute("Locked") == nil then
         car:SetAttribute("Locked", true)
@@ -197,7 +246,7 @@ function VehicleManager:getCarList()
     local list = {}
     for car in pairs(self.carRegistered) do
         if car and car.Parent then
-            table.insert(list,car)
+            table.insert(list, car)
         end
     end
     return list
@@ -209,7 +258,7 @@ end
 local parentGui = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AUTEL"
+screenGui.Name = "AUTEL_V3"
 screenGui.IgnoreGuiInset = true
 screenGui.ResetOnSpawn = false
 screenGui.Parent = parentGui
@@ -219,40 +268,43 @@ tablet.Name = "TabletRoot"
 tablet.Size = CONFIG.TabletSize
 tablet.AnchorPoint = CONFIG.TabletAnchorPoint
 tablet.Position = CONFIG.TabletOffset
-tablet.BackgroundColor3 = Color3.fromRGB(15,15,15)
+tablet.BackgroundColor3 = CONFIG.Theme.Background
 tablet.BorderSizePixel = 0
 tablet.Visible = false
+tablet.ClipsDescendants = true
 tablet.Parent = screenGui
-roundify(tablet,10)
+roundify(tablet, 12)
+addStroke(tablet, 1.5, Color3.fromRGB(0,0,0), 0.6)
 
 -----------------------------
 -- TOP BAR
 -----------------------------
 local topBar = Instance.new("Frame")
 topBar.Name = "TopBar"
-topBar.Size = UDim2.new(1,0,0,30)
-topBar.BackgroundColor3 = Color3.fromRGB(180,0,0)
+topBar.Size = UDim2.new(1,0,0,32)
+topBar.BackgroundColor3 = CONFIG.Theme.Accent
 topBar.BorderSizePixel = 0
 topBar.Parent = tablet
+roundify(topBar, 12)
 
 local topTitle = Instance.new("TextLabel")
 topTitle.Size = UDim2.new(0.5,0,1,0)
-topTitle.Position = UDim2.new(0,6,0,0)
+topTitle.Position = UDim2.new(0,8,0,0)
 topTitle.BackgroundTransparency = 1
-topTitle.TextColor3 = Color3.fromRGB(255,255,255)
+topTitle.TextColor3 = CONFIG.Theme.TextPrimary
 topTitle.TextScaled = true
-topTitle.Font = Enum.Font.SourceSansBold
+topTitle.Font = Enum.Font.GothamBold
 topTitle.TextXAlignment = Enum.TextXAlignment.Left
-topTitle.Text = "AUTEL"
+topTitle.Text = "AUTEL PROPAD"
 topTitle.Parent = topBar
 
 local topInfo = Instance.new("TextLabel")
-topInfo.Size = UDim2.new(0.5,-6,1,0)
+topInfo.Size = UDim2.new(0.5,-8,1,0)
 topInfo.Position = UDim2.new(0.5,0,0,0)
 topInfo.BackgroundTransparency = 1
-topInfo.TextColor3 = Color3.fromRGB(255,255,255)
+topInfo.TextColor3 = CONFIG.Theme.TextPrimary
 topInfo.TextScaled = true
-topInfo.Font = Enum.Font.SourceSans
+topInfo.Font = Enum.Font.Gotham
 topInfo.TextXAlignment = Enum.TextXAlignment.Right
 topInfo.Text = "Unlinked"
 topInfo.Parent = topBar
@@ -262,28 +314,42 @@ topInfo.Parent = topBar
 -----------------------------
 local nav = Instance.new("Frame")
 nav.Name = "Nav"
-nav.Size = UDim2.new(0,70,1,-50)
-nav.Position = UDim2.new(0,0,0,30)
-nav.BackgroundColor3 = Color3.fromRGB(10,10,10)
+nav.Size = UDim2.new(0,76,1,-54)
+nav.Position = UDim2.new(0,0,0,32)
+nav.BackgroundColor3 = CONFIG.Theme.BackgroundAlt
 nav.BorderSizePixel = 0
 nav.Parent = tablet
 
+local navListLayout = Instance.new("UIListLayout")
+navListLayout.FillDirection = Enum.FillDirection.Vertical
+navListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+navListLayout.Padding = UDim.new(0,4)
+navListLayout.Parent = nav
+
+local navPadding = Instance.new("UIPadding")
+navPadding.PaddingTop = UDim.new(0,4)
+navPadding.PaddingBottom = UDim.new(0,4)
+navPadding.PaddingLeft = UDim.new(0,4)
+navPadding.PaddingRight = UDim.new(0,4)
+navPadding.Parent = nav
+
 local mainPanel = Instance.new("Frame")
 mainPanel.Name = "MainPanel"
-mainPanel.Size = UDim2.new(1,-70,1,-50)
-mainPanel.Position = UDim2.new(0,70,0,30)
-mainPanel.BackgroundColor3 = Color3.fromRGB(20,20,20)
+mainPanel.Size = UDim2.new(1,-76,1,-54)
+mainPanel.Position = UDim2.new(0,76,0,32)
+mainPanel.BackgroundColor3 = CONFIG.Theme.BackgroundAlt
 mainPanel.BorderSizePixel = 0
 mainPanel.Parent = tablet
+roundify(mainPanel, 10)
 
 local mainText = Instance.new("TextLabel")
 mainText.Name = "MainText"
-mainText.Size = UDim2.new(1,-10,1,-50)
-mainText.Position = UDim2.new(0,5,0,5)
+mainText.Size = UDim2.new(1,-12,1,-60)
+mainText.Position = UDim2.new(0,6,0,6)
 mainText.BackgroundTransparency = 1
-mainText.TextColor3 = Color3.fromRGB(255,255,255)
+mainText.TextColor3 = CONFIG.Theme.TextPrimary
 mainText.TextScaled = true
-mainText.Font = Enum.Font.SourceSansBold
+mainText.Font = Enum.Font.GothamBold
 mainText.TextWrapped = true
 mainText.TextXAlignment = Enum.TextXAlignment.Left
 mainText.TextYAlignment = Enum.TextYAlignment.Top
@@ -297,42 +363,48 @@ local arrowBar = Instance.new("Frame")
 arrowBar.Name = "ArrowBar"
 arrowBar.Size = UDim2.new(1,0,0,40)
 arrowBar.Position = UDim2.new(0,0,1,-40)
-arrowBar.BackgroundColor3 = Color3.fromRGB(15,15,15)
+arrowBar.BackgroundColor3 = CONFIG.Theme.Background
 arrowBar.BorderSizePixel = 0
 arrowBar.Parent = mainPanel
 
-local prevBtn = Instance.new("TextButton")
-prevBtn.Name = "PrevBtn"
-prevBtn.Size = UDim2.new(0,60,0,30)
-prevBtn.Position = UDim2.new(0.25,-30,0.5,-15)
-prevBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-prevBtn.TextColor3 = Color3.fromRGB(255,255,255)
-prevBtn.TextScaled = true
-prevBtn.Font = Enum.Font.SourceSansBold
-prevBtn.Text = "◀"
-prevBtn.Visible = false
-prevBtn.Parent = arrowBar
+local function makeArrowButton(name, text, anchorX)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0,60,0,30)
+    btn.AnchorPoint = Vector2.new(0.5,0.5)
+    btn.Position = UDim2.new(anchorX,0,0.5,0)
+    btn.BackgroundColor3 = CONFIG.Theme.Button
+    btn.TextColor3 = CONFIG.Theme.TextPrimary
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = text
+    btn.Visible = false
+    btn.AutoButtonColor = false
+    btn.Parent = arrowBar
+    roundify(btn, 8)
+    addStroke(btn, 1, Color3.fromRGB(0,0,0), 0.6)
 
-local nextBtn = Instance.new("TextButton")
-nextBtn.Name = "NextBtn"
-nextBtn.Size = UDim2.new(0,60,0,30)
-nextBtn.Position = UDim2.new(0.75,-30,0.5,-15)
-nextBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-nextBtn.TextColor3 = Color3.fromRGB(255,255,255)
-nextBtn.TextScaled = true
-nextBtn.Font = Enum.Font.SourceSansBold
-nextBtn.Text = "▶"
-nextBtn.Visible = false
-nextBtn.Parent = arrowBar
+    btn.MouseEnter:Connect(function()
+        tween(btn, {BackgroundColor3 = CONFIG.Theme.ButtonHover}, 0.12)
+    end)
+    btn.MouseLeave:Connect(function()
+        tween(btn, {BackgroundColor3 = CONFIG.Theme.Button}, 0.12)
+    end)
+
+    return btn
+end
+
+local prevBtn = makeArrowButton("PrevBtn", "◀", 0.25)
+local nextBtn = makeArrowButton("NextBtn", "▶", 0.75)
 
 -----------------------------
 -- STATUS BAR
 -----------------------------
 local statusBar = Instance.new("Frame")
 statusBar.Name = "StatusBar"
-statusBar.Size = UDim2.new(1,0,0,20)
-statusBar.Position = UDim2.new(0,0,1,-20)
-statusBar.BackgroundColor3 = Color3.fromRGB(10,10,10)
+statusBar.Size = UDim2.new(1,0,0,22)
+statusBar.Position = UDim2.new(0,0,1,-22)
+statusBar.BackgroundColor3 = CONFIG.Theme.Background
 statusBar.BorderSizePixel = 0
 statusBar.Parent = tablet
 
@@ -341,16 +413,16 @@ statusLabel.Name = "StatusLabel"
 statusLabel.Size = UDim2.new(1,-10,1,0)
 statusLabel.Position = UDim2.new(0,5,0,0)
 statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3 = Color3.fromRGB(0,255,0)
+statusLabel.TextColor3 = CONFIG.Theme.StatusGood
 statusLabel.TextScaled = true
-statusLabel.Font = Enum.Font.SourceSansBold
+statusLabel.Font = Enum.Font.GothamBold
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.Text = "Status: Ready"
 statusLabel.Parent = statusBar
 
-local function setStatus(t,c)
+local function setStatus(t, c)
     statusLabel.Text = "Status: "..t
-    statusLabel.TextColor3 = c or Color3.fromRGB(0,255,0)
+    statusLabel.TextColor3 = c or CONFIG.Theme.StatusGood
 end
 
 local function setMain(t)
@@ -362,35 +434,52 @@ end
 -----------------------------
 local navButtons = {}
 
-local function makeNavButton(name, order)
+local function makeNavButton(name, order, label)
     local btn = Instance.new("TextButton")
     btn.Name = name
     btn.Size = UDim2.new(1,0,0,32)
-    btn.Position = UDim2.new(0,0,0,(order-1)*34)
-    btn.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    btn.BackgroundColor3 = CONFIG.Theme.NavIdle
     btn.BorderSizePixel = 0
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
+    btn.TextColor3 = CONFIG.Theme.TextSecondary
     btn.TextScaled = true
-    btn.Font = Enum.Font.SourceSansBold
-    btn.Text = name
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = label or name
     btn.AutoButtonColor = false
+    btn.LayoutOrder = order
     btn.Parent = nav
+    roundify(btn, 8)
+
+    btn.MouseEnter:Connect(function()
+        if not Mode:is(name) then
+            tween(btn, {BackgroundColor3 = CONFIG.Theme.NavActive}, 0.12)
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if not Mode:is(name) then
+            tween(btn, {BackgroundColor3 = CONFIG.Theme.NavIdle}, 0.12)
+        end
+    end)
+
     navButtons[name] = btn
     return btn
 end
 
 local function highlightNav(name)
     for n,btn in pairs(navButtons) do
-        btn.BackgroundColor3 = (n==name) and Color3.fromRGB(60,60,60) or Color3.fromRGB(25,25,25)
+        local active = (n == name)
+        tween(btn, {
+            BackgroundColor3 = active and CONFIG.Theme.NavActive or CONFIG.Theme.NavIdle,
+            TextColor3       = active and CONFIG.Theme.TextPrimary or CONFIG.Theme.TextSecondary
+        }, 0.12)
     end
     Mode:set(name)
 end
 
-local scanNav  = makeNavButton("SCAN",1)
-local spoofNav = makeNavButton("SPOOF",2)
-local sonarNav = makeNavButton("SONAR",3)
-local setNav   = makeNavButton("SET",4)
-local exitNav  = makeNavButton("EXIT",5)
+local scanNav  = makeNavButton("SCAN",  1, "SCAN")
+local spoofNav = makeNavButton("SPOOF", 2, "SPOOF")
+local sonarNav = makeNavButton("SONAR", 3, "SONAR")
+local setNav   = makeNavButton("SET",   4, "SET")
+local exitNav  = makeNavButton("EXIT",  5, "EXIT")
 
 -----------------------------
 -- LINK STATE + SURFACE MIRROR
@@ -403,9 +492,9 @@ local function updateLinkStatus()
     topInfo.Text = t
 
     if surfaceTablet then
-        local sTop = surfaceTablet:FindFirstChild("TopBar",true)
+        local sTop = surfaceTablet:FindFirstChild("TopBar", true)
         if sTop then
-            local sInfo = sTop:FindFirstChild("TextLabel",true)
+            local sInfo = sTop:FindFirstChild("TextLabel", true)
             if sInfo then
                 sInfo.Text = t
             end
@@ -435,8 +524,8 @@ surfaceTablet.AnchorPoint = Vector2.new(0.5,0.5)
 surfaceTablet.Position = UDim2.new(0.5,0,0.5,0)
 surfaceTablet.Parent = surfaceGui
 
-local surfaceMainText    = surfaceTablet:FindFirstChild("MainText",true)
-local surfaceStatusLabel = surfaceTablet:FindFirstChild("StatusLabel",true)
+local surfaceMainText    = surfaceTablet:FindFirstChild("MainText", true)
+local surfaceStatusLabel = surfaceTablet:FindFirstChild("StatusLabel", true)
 
 local function syncMain(t)
     setMain(t)
@@ -445,11 +534,11 @@ local function syncMain(t)
     end
 end
 
-local function syncStatus(t,c)
-    setStatus(t,c)
+local function syncStatus(t, c)
+    setStatus(t, c)
     if surfaceStatusLabel then
         surfaceStatusLabel.Text = "Status: "..t
-        surfaceStatusLabel.TextColor3 = c or Color3.fromRGB(0,255,0)
+        surfaceStatusLabel.TextColor3 = c or CONFIG.Theme.StatusGood
     end
 end
 
@@ -480,7 +569,7 @@ function SonarManager:createDistanceUI(car)
 
     local gui = Instance.new("BillboardGui")
     gui.Name = "AutelDistanceUI"
-    gui.Size = UDim2.new(0,120,0,40)
+    gui.Size = UDim2.new(0,80,0,28) -- PATCHED (smaller UI)
     gui.Adornee = primary
     gui.AlwaysOnTop = true
     gui.StudsOffset = Vector3.new(0,4,0)
@@ -490,8 +579,8 @@ function SonarManager:createDistanceUI(car)
     label.Size = UDim2.new(1,0,1,0)
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.fromRGB(255,0,0)
-    label.TextScaled = true
     label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 14 -- PATCHED (smaller text)
     label.Text = "Distance: ???"
     label.Parent = gui
 
@@ -520,6 +609,7 @@ function SonarManager:update()
     end
 end
 
+
 -----------------------------
 -- SPOOF LOGIC
 -----------------------------
@@ -527,9 +617,14 @@ local spoofedKeys    = {}
 local lastScannedCar = nil
 
 local function spoofKey(car)
+    if not car or not car.Parent then
+        syncStatus("Vehicle invalid", CONFIG.Theme.StatusBad)
+        return
+    end
+
     local code = car:GetAttribute("KeyCode")
     if not code then
-        syncStatus("Car has no key", Color3.fromRGB(255,0,0))
+        syncStatus("Car has no key", CONFIG.Theme.StatusBad)
         return
     end
 
@@ -564,8 +659,13 @@ local function spoofKey(car)
         end
     end
 
-    syncStatus("Spoofed: "..car.Name, Color3.fromRGB(0,255,0))
-    syncMain("SPOOF MODULE\n\nVehicle: "..car.Name.."\nKey spoofed and locks bypassed.")
+    syncStatus("Spoofed: "..car.Name, CONFIG.Theme.StatusGood)
+    syncMain(
+        "SPOOF MODULE\n\n"..
+        "Vehicle: "..car.Name..
+        "\nKey spoofed and locks bypassed.\n\n"..
+        "Engine and immobilizer scripts neutralized."
+    )
 end
 
 -----------------------------
@@ -597,7 +697,7 @@ local function openScanMode()
 
     local root = getRoot()
     if not root then
-        syncStatus("No character", Color3.fromRGB(255,0,0))
+        syncStatus("No character", CONFIG.Theme.StatusBad)
         syncMain("SCAN MODULE\n\nCharacter not found.")
         return
     end
@@ -608,14 +708,20 @@ local function openScanMode()
     for _,car in ipairs(scanList) do
         local p = getPrimary(car)
         if p and (p.Position - root.Position).Magnitude <= CONFIG.ScanRadius then
-            table.insert(filtered,car)
+            table.insert(filtered, car)
         end
     end
     scanList = filtered
 
     if #scanList == 0 then
-        syncStatus("No cars found", Color3.fromRGB(255,0,0))
-        syncMain("SCAN MODULE\n\nNo vehicles detected around you.")
+        syncStatus("No cars found", CONFIG.Theme.StatusBad)
+        syncMain(
+            "SCAN MODULE\n\n"..
+            "No vehicles detected around you.\n\n"..
+            "Move closer to vehicles and try again."
+        )
+        prevBtn.Visible = false
+        nextBtn.Visible = false
         return
     end
 
@@ -626,20 +732,31 @@ local function openScanMode()
 
     local function showCar()
         local car = scanList[scanIndex]
-        if not car or not car.Parent then return end
+        if not car or not car.Parent then
+            syncStatus("Vehicle missing", CONFIG.Theme.StatusWarn)
+            return
+        end
 
         vehicleManager:ensureAttributes(car)
 
         local p = getPrimary(car)
-        local dist = (p.Position - root.Position).Magnitude
-        local locked = getAttr(car, "Locked", true)
+        if not p then
+            syncStatus("No primary part", CONFIG.Theme.StatusWarn)
+            return
+        end
 
-        syncStatus("Car "..scanIndex.." of "..#scanList, Color3.fromRGB(0,255,0))
+        local dist   = (p.Position - root.Position).Magnitude
+        local locked = getAttr(car, "Locked", true)
+        local key    = getAttr(car, "KeyCode", "N/A")
+
+        syncStatus("Car "..scanIndex.." of "..#scanList, CONFIG.Theme.StatusGood)
         syncMain(
-            "SCAN MODULE (PHONE MODE)\n\nVehicle "..scanIndex.."/"..#scanList..
+            "SCAN MODULE (PHONE MODE)\n\n"..
+            "Vehicle "..scanIndex.."/"..#scanList..
             "\nName: "..car.Name..
             "\nDistance: "..math.floor(dist).." studs"..
-            "\nLocked: "..tostring(locked)
+            "\nLocked: "..tostring(locked)..
+            "\nKeyCode: "..tostring(key)
         )
 
         prevBtn.Visible = (#scanList > 1)
@@ -654,6 +771,7 @@ local function openScanMode()
     prevConn = prevBtn.MouseButton1Click:Connect(function()
         if scanIndex > 1 then
             scanIndex -= 1
+            lastScannedCar = scanList[scanIndex]
             showCar()
         end
     end)
@@ -661,6 +779,7 @@ local function openScanMode()
     nextConn = nextBtn.MouseButton1Click:Connect(function()
         if scanIndex < #scanList then
             scanIndex += 1
+            lastScannedCar = scanList[scanIndex]
             showCar()
         end
     end)
@@ -677,8 +796,12 @@ local function openSpoofMode()
     nextBtn.Visible = false
 
     if not lastScannedCar or not lastScannedCar.Parent then
-        syncStatus("Scan a car first", Color3.fromRGB(255,170,0))
-        syncMain("SPOOF MODULE\n\nNo vehicle selected.\nRun SCAN first.")
+        syncStatus("Scan a car first", CONFIG.Theme.StatusWarn)
+        syncMain(
+            "SPOOF MODULE\n\n"..
+            "No vehicle selected.\n"..
+            "Run SCAN first to select a vehicle."
+        )
         return
     end
 
@@ -698,7 +821,7 @@ local function openSonarMode()
 
     local cars = vehicleManager:getCarList()
     if #cars == 0 then
-        syncStatus("No cars found", Color3.fromRGB(255,0,0))
+        syncStatus("No cars found", CONFIG.Theme.StatusBad)
         syncMain("SONAR MODULE\n\nNo vehicles detected in the world.")
         return
     end
@@ -707,8 +830,12 @@ local function openSonarMode()
         sonarManager:createDistanceUI(car)
     end
 
-    syncStatus("SONAR tracking all vehicles", Color3.fromRGB(0,255,0))
-    syncMain("SONAR MODULE\n\nTracking ALL vehicles.\nDistance labels update smoothly.")
+    syncStatus("SONAR tracking all vehicles", CONFIG.Theme.StatusGood)
+    syncMain(
+        "SONAR MODULE\n\n"..
+        "Tracking ALL vehicles.\n"..
+        "Distance labels update smoothly and color-code by range."
+    )
 end
 
 local function openSettingsMode()
@@ -721,8 +848,15 @@ local function openSettingsMode()
     prevBtn.Visible = false
     nextBtn.Visible = false
 
-    syncStatus("Settings open", Color3.fromRGB(0,255,0))
-    syncMain("SETTINGS MODULE\n\nKeybind: T\nTheme: Ultra Clean\nSync: Enabled\n\nValues are static in this build.")
+    syncStatus("Settings open", CONFIG.Theme.StatusGood)
+    syncMain(
+        "SETTINGS MODULE\n\n"..
+        "Keybind: "..tostring(CONFIG.ToggleKey.Name).."\n"..
+        "Theme: Ultra Clean++\n"..
+        "Sync: Enabled (Screen + Surface)\n"..
+        "Scan Radius: "..tostring(CONFIG.ScanRadius).." studs\n\n"..
+        "Values are static in this build."
+    )
 end
 
 local function exitAndReset()
@@ -742,7 +876,7 @@ local function exitAndReset()
     prevBtn.Visible = false
     nextBtn.Visible = false
 
-    syncStatus("Closed", Color3.fromRGB(255,170,0))
+    syncStatus("Closed", CONFIG.Theme.StatusWarn)
     syncMain("Select a module on the left.")
 
     tween(tablet, {BackgroundTransparency = 1}, 0.15)
@@ -775,7 +909,7 @@ local function resetTabletState()
     prevBtn.Visible = false
     nextBtn.Visible = false
 
-    syncStatus("Ready", Color3.fromRGB(0,255,0))
+    syncStatus("Ready", CONFIG.Theme.StatusGood)
     syncMain("Select a module on the left.")
 end
 
