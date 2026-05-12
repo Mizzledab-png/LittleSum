@@ -1,4 +1,8 @@
---// AUTEL PROPAD — SECTION 1: CONFIG + UTILITIES
+--// AUTEL PROPAD — CLEAN FINAL VERSION (NO MOVEMENT, NO DEAD CODE)
+
+-------------------------
+-- SECTION 1: UTILITIES
+-------------------------
 
 local plr = game.Players.LocalPlayer
 local uis = game.UserInputService
@@ -27,23 +31,18 @@ local function isValidCarName(name)
 end
 
 local function getSignalBars(dist)
-    if dist <= 30 then
-        return "<font color='rgb(0,255,0)'>▮▮▮</font>"
-    elseif dist <= 100 then
-        return "<font color='rgb(255,255,0)'>▮▮</font>"
-    elseif dist <= 199 then
-        return "<font color='rgb(255,255,0)'>▮</font>"
-    else
-        return "<font color='rgb(255,0,0)'>▮</font>"
-    end
+    if dist <= 30 then return "<font color='rgb(0,255,0)'>▮▮▮</font>"
+    elseif dist <= 100 then return "<font color='rgb(255,255,0)'>▮▮</font>"
+    elseif dist <= 199 then return "<font color='rgb(255,255,0)'>▮</font>"
+    else return "<font color='rgb(255,0,0)'>▮</font>" end
 end
 
 local function getProgressBar(pct)
-    local filled = math.floor(pct / 10)
+    local filled = math.floor(pct/10)
     local empty = 10 - filled
     local bar = ""
-    for _ = 1, filled do bar = bar .. "<font color='rgb(0,255,0)'>▮</font>" end
-    for _ = 1, empty do bar = bar .. "<font color='rgb(60,60,60)'>▮</font>" end
+    for _=1,filled do bar = bar .. "<font color='rgb(0,255,0)'>▮</font>" end
+    for _=1,empty do bar = bar .. "<font color='rgb(60,60,60)'>▮</font>" end
     return bar
 end
 
@@ -51,7 +50,9 @@ local function root()
     local c = plr.Character or plr.CharacterAdded:Wait()
     return c:WaitForChild("HumanoidRootPart")
 end
---// AUTEL PROPAD — SECTION 2: VEHICLE REGISTRY
+-------------------------------
+-- SECTION 2: VEHICLE REGISTRY
+-------------------------------
 
 local VM = {cars = {}, primary = {}}
 
@@ -101,92 +102,9 @@ for _,o in ipairs(workspace:GetDescendants()) do
         if m then registerModel(m) end
     end
 end
---// AUTEL PROPAD — SECTION 3: MOVEMENT SYSTEM
-
-local activeMoveTween
-local walkingConn
-
-local function cancelMoveTween()
-    if activeMoveTween then
-        activeMoveTween:Cancel()
-        activeMoveTween = nil
-    end
-end
-
-local function stopWalking()
-    if walkingConn then
-        walkingConn:Disconnect()
-        walkingConn = nil
-    end
-end
-
-function moveToAndSit(car)
-    cancelMoveTween()
-    stopWalking()
-
-    local char = plr.Character or plr.CharacterAdded:Wait()
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildWhichIsA("Humanoid")
-    if not hrp or not hum then return end
-
-    local seat = car:FindFirstChildWhichIsA("VehicleSeat", true)
-    if not seat or not seat.Parent then return end
-
-    hum:ChangeState(Enum.HumanoidStateType.Running)
-    hum.AutoRotate = true
-
-    walkingConn = rs.Heartbeat:Connect(function()
-        if not seat or not seat.Parent or not hrp.Parent then
-            stopWalking()
-            return
-        end
-
-        local dist = (hrp.Position - seat.Position).Magnitude
-        hum:MoveTo(seat.Position)
-
-        if dist <= 10 then
-            stopWalking()
-
-            hum:ChangeState(Enum.HumanoidStateType.Physics)
-
-            local tweenInfo = TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            activeMoveTween = ts:Create(hrp, tweenInfo, {CFrame = seat.CFrame + Vector3.new(0,2,0)})
-
-            local thisTween = activeMoveTween
-            thisTween:Play()
-
-            -- 5-second abort
-            task.delay(5, function()
-                if activeMoveTween == thisTween then
-                    thisTween:Cancel()
-                    activeMoveTween = nil
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
-                end
-            end)
-
-            thisTween.Completed:Connect(function()
-                if activeMoveTween ~= thisTween then return end
-                activeMoveTween = nil
-
-                if not seat or not seat.Parent then
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
-                    return
-                end
-
-                task.wait(0.1)
-                hrp.CFrame = seat.CFrame
-
-                -- SEAT WELD FIX
-                hum.Sit = false
-                task.wait()
-                hum.Sit = true
-
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-            end)
-        end
-    end)
-end
---// AUTEL PROPAD — SECTION 4: GUI FRAMEWORK
+-------------------------------------
+-- SECTION 4: GUI FRAMEWORK
+-------------------------------------
 
 local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
 gui.IgnoreGuiInset = true
@@ -214,12 +132,14 @@ tab.InputBegan:Connect(function(i)
         sp = tab.Position
     end
 end)
+
 tab.InputChanged:Connect(function(i)
     if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
         local d = i.Position - ds
         tab.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
     end
 end)
+
 uis.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
 end)
@@ -308,7 +228,9 @@ sonarList.Visible = false
 local listLayout = Instance.new("UIListLayout", sonarList)
 listLayout.Padding = UDim.new(0,4)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
---// AUTEL PROPAD — SECTION 5: MODULES
+-------------------------------------
+-- SECTION 5: MODULES
+-------------------------------------
 
 local activeBillboard = nil
 local liveUpdater = nil
@@ -336,7 +258,10 @@ local function clearSonarUI()
     disconnectConn(listUpdater)
     disconnectConn(progressUpdater)
 
-    liveUpdater, listUpdater, progressUpdater = nil, nil, nil
+    liveUpdater = nil
+    listUpdater = nil
+    progressUpdater = nil
+
     progressLabel.Text = ""
 end
 
@@ -403,7 +328,7 @@ local function buildVehicleList()
         local p = VM.primary[m]
         if p and m.Parent then
             local d = (p.Position - r.Position).Magnitude
-            table.insert(list, {car=m, dist=d})
+            table.insert(list, {car = m, dist = d})
         end
     end
 
@@ -442,7 +367,7 @@ local function CONNECTIONS()
         b.MouseButton1Click:Connect(function()
             lastCar = e.car
             clearSonarUI()
-            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Reprogram Progress:</font>"):format(e.car.Name))
+            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Connection Progress:</font>"):format(e.car.Name))
             showTargetUI(e.car)
         end)
     end
@@ -462,7 +387,7 @@ local function CONNECTIONS()
                     button.Text = string.format("%s  %s  (%d studs)", car.Name, getSignalBars(d), d)
                 end
             else
-                button.Text = (car and car.Name or "Unknown").." (lost)"
+                button.Text = (car and car.Name or "Unknown") .. " (lost)"
             end
         end
     end)
@@ -505,10 +430,8 @@ local function REPROGRAM()
 
     kickDriver(lastCar)
 
-    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key spoofed.\nDriver removed.\n\nApproaching vehicle…"):format(lastCar.Name))
+    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key spoofed.\nDriver removed."):format(lastCar.Name))
     status.Text = "Status: Reprogrammed"
-
-    moveToAndSit(lastCar)
 end
 
 -- SCAN MODULE
@@ -545,7 +468,6 @@ end
 -- EXIT MODULE
 local function EXIT()
     clearSonarUI()
-    cancelMoveTween()
     lastCar = nil
     status.Text = "Status: Idle"
     setText("Session closed.\n\nPress T or type !autel to reopen.")
@@ -573,6 +495,7 @@ local function btn(t,o,f)
     b.MouseEnter:Connect(function()
         tween(b,{BackgroundColor3=CFG.Col},.15):Play()
     end)
+
     b.MouseLeave:Connect(function()
         tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
     end)
@@ -582,13 +505,18 @@ local function btn(t,o,f)
         clearPanelButtons()
         f()
     end)
+
+    return b
 end
 
+-- Create buttons
 btn("Connections",1,CONNECTIONS)
 btn("Reprogram",2,REPROGRAM)
 btn("Scan",3,SCAN)
 btn("Exit",4,EXIT)
---// AUTEL PROPAD — SECTION 6: INPUT HANDLING + MOBILE BUTTON
+-------------------------------------
+-- SECTION 6: INPUT HANDLING
+-------------------------------------
 
 local open = false
 
@@ -604,7 +532,7 @@ local function toggle()
         status.Text = "Status: Idle"
 
         if lastCar and lastCar.Parent then
-            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Reprogram Progress:</font>"):format(lastCar.Name))
+            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Connection Progress:</font>"):format(lastCar.Name))
             showTargetUI(lastCar)
         else
             setText("Select a module on the left.")
@@ -626,7 +554,10 @@ plr.Chatted:Connect(function(m)
     if m:lower() == CFG.Cmd then toggle() end
 end)
 
--- MOBILE BUTTON
+-------------------------------------
+-- SECTION 7: MOBILE BUTTON
+-------------------------------------
+
 if CFG.UseMobileButton and uis.TouchEnabled then
     local openBtn = Instance.new("TextButton")
     openBtn.Size = UDim2.new(0,80,0,30)
@@ -641,4 +572,3 @@ if CFG.UseMobileButton and uis.TouchEnabled then
 
     openBtn.MouseButton1Click:Connect(toggle)
 end
-
