@@ -1,3 +1,5 @@
+repeat task.wait() until game:IsLoaded()
+
 local plr = game.Players.LocalPlayer
 local uis = game.UserInputService
 local TweenService = game:GetService("TweenService")
@@ -34,6 +36,7 @@ local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
 gui.Name = "AUTEL_PRO_SPECTRE"
+task.wait(0.25)
 
 local tab = Instance.new("Frame", gui)
 tab.Size = CFG.CompactSize
