@@ -62,7 +62,7 @@ local function root()
 end
 -------------------------
 -- AUTEL//PRO SPECTRE
--- SECTION 2: GUI + HYBRID ENGINE
+-- SECTION 2: GUI + HYBRID ENGINE (PATCHED)
 -------------------------
 
 local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
@@ -95,14 +95,13 @@ local full = Instance.new("Frame", gui)
 full.Size = CFG.FullSize
 full.Position = CFG.FullPos
 full.BackgroundColor3 = CFG.BG_Full
-full.BackgroundTransparency = 1     -- starts transparent
+full.BackgroundTransparency = 1
 full.Visible = false
 
--- Tactical grid overlay (SPECTRE signature)
 local grid = Instance.new("ImageLabel", full)
 grid.Size = UDim2.new(1,0,1,0)
 grid.BackgroundTransparency = 1
-grid.Image = "rbxassetid://9152716921" -- faint grid texture
+grid.Image = "rbxassetid://9152716921"
 grid.ImageTransparency = 0.85
 grid.ScaleType = Enum.ScaleType.Tile
 grid.TileSize = UDim2.new(0,120,0,120)
@@ -119,7 +118,6 @@ local function expandToFull()
     full.Visible = true
     spectralFlicker(full)
 
-    -- fade in full-screen
     tween(full, {BackgroundTransparency = 0.05}, CFG.FadeTime):Play()
     tween(tab, {BackgroundTransparency = 1}, CFG.FadeTime):Play()
 
@@ -172,128 +170,15 @@ uis.InputEnded:Connect(function(i)
         dragging = false
     end
 end)
--------------------------
--- AUTEL//PRO SPECTRE
--- SECTION 3: VEHICLE REGISTRY + TARGET TRACKING
--------------------------
-
-local VM = {cars = {}, primary = {}}
-local lastCar = nil
 
 -----------------------------------------------------
--- PRIMARY PART ASSIGNMENT (SPECTRE SILENT LOGIC)
+-- GLOBAL EXPORTS (PATCHED)
 -----------------------------------------------------
-local function assignPrimaryPart(model)
-    if model.PrimaryPart then return model.PrimaryPart end
-
-    for _, p in ipairs(model:GetDescendants()) do
-        if p:IsA("BasePart") then
-            model.PrimaryPart = p
-            return p
-        end
-    end
-
-    return nil
-end
-
------------------------------------------------------
--- VALID CAR NAME CHECK
------------------------------------------------------
-local function isValidCarName(name)
-    if not name then return false end
-    name = name:lower()
-    return name ~= "body" and name ~= "model" and name ~= "futon"
-end
-
------------------------------------------------------
--- REGISTER MODEL INTO VEHICLE MATRIX
------------------------------------------------------
-local function registerModel(model)
-    if not model:IsA("Model") then return end
-    if not isValidCarName(model.Name) then return end
-
-    local seat = model:FindFirstChildWhichIsA("VehicleSeat", true)
-    if not seat then return end
-
-    local pp = assignPrimaryPart(model)
-    if not pp then return end
-
-    if not VM.primary[model] then
-        VM.primary[model] = pp
-        table.insert(VM.cars, model)
-    end
-end
-
------------------------------------------------------
--- AUTO-REGISTER EXISTING VEHICLES
------------------------------------------------------
-for _, obj in ipairs(workspace:GetDescendants()) do
-    if obj:IsA("VehicleSeat") then
-        local m = obj:FindFirstAncestorWhichIsA("Model")
-        if m then registerModel(m) end
-    end
-end
-
------------------------------------------------------
--- REGISTER NEW VEHICLES AS THEY SPAWN
------------------------------------------------------
-workspace.DescendantAdded:Connect(function(obj)
-    if obj:IsA("VehicleSeat") then
-        local m = obj:FindFirstAncestorWhichIsA("Model")
-        if m then registerModel(m) end
-    end
-end)
-
------------------------------------------------------
--- CLEANUP WHEN VEHICLES DESPAWN
------------------------------------------------------
-workspace.ChildRemoved:Connect(function(model)
-    if VM.primary[model] then
-        VM.primary[model] = nil
-
-        for i, v in ipairs(VM.cars) do
-            if v == model then
-                table.remove(VM.cars, i)
-                break
-            end
-        end
-    end
-
-    if lastCar == model then
-        lastCar = nil
-    end
-end)
-
------------------------------------------------------
--- BUILD SORTED VEHICLE LIST (SPECTRE SILENT SCAN)
------------------------------------------------------
-local function buildVehicleList()
-    local ok, r = pcall(root)
-    if not ok or not r or not r.Parent then return {} end
-
-    local list = {}
-
-    for _, m in ipairs(VM.cars) do
-        local p = VM.primary[m]
-        if p and m.Parent then
-            local dist = (p.Position - r.Position).Magnitude
-            table.insert(list, {car = m, dist = dist})
-        end
-    end
-
-    table.sort(list, function(a,b)
-        return a.dist < b.dist
-    end)
-
-    return list
-end
-
--- Expose for other modules
-_G.AUTELPRO_SPECTRE = _G.AUTELPRO_SPECTRE or {}
-_G.AUTELPRO_SPECTRE.buildVehicleList = buildVehicleList
-_G.AUTELPRO_SPECTRE.VM = VM
-_G.AUTELPRO_SPECTRE.lastCar = function() return lastCar end
-_G.AUTELPRO_SPECTRE.setLastCar = function(c) lastCar = c end
+_G.AUTELPRO_SPECTRE.tab = tab
+_G.AUTELPRO_SPECTRE.full = full
+_G.AUTELPRO_SPECTRE.isFull = function() return isFull end
+_G.AUTELPRO_SPECTRE.expandToFull = expandToFull
+_G.AUTELPRO_SPECTRE.collapseToCompact = collapseToCompact
 -------------------------
 -- AUTEL//PRO SPECTRE
 -- SECTION 4: COMMAND UI + TEXT ENGINE
@@ -889,7 +774,7 @@ end
 _G.AUTELPRO_SPECTRE.EXIT = EXIT
 -------------------------
 -- AUTEL//PRO SPECTRE
--- SECTION 10: COMMAND ROUTING ENGINE
+-- SECTION 10: COMMAND ROUTING ENGINE (PATCHED)
 -------------------------
 
 local uis = game.UserInputService
@@ -904,12 +789,18 @@ local EXIT = _G.AUTELPRO_SPECTRE.EXIT
 local setText = _G.AUTELPRO_SPECTRE.setText
 local status = _G.AUTELPRO_SPECTRE.status
 
+-- IMPORT PATCHED GLOBALS
+local tab = _G.AUTELPRO_SPECTRE.tab
+local expandToFull = _G.AUTELPRO_SPECTRE.expandToFull
+local collapseToCompact = _G.AUTELPRO_SPECTRE.collapseToCompact
+local isFull = _G.AUTELPRO_SPECTRE.isFull
+
 -----------------------------------------------------
--- TABLET TOGGLE (KEYBIND)
+-- TABLET TOGGLE (KEYBIND) — FIXED
 -----------------------------------------------------
 uis.InputBegan:Connect(function(i)
     if i.KeyCode == CFG.Key then
-        if tab.Visible or not isFull then
+        if not isFull() then
             expandToFull()
             setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
             status.Text = "Status: READY"
@@ -926,7 +817,7 @@ plr.Chatted:Connect(function(msg)
     msg = msg:lower()
 
     if msg == CFG.Cmd then
-        if tab.Visible or not isFull then
+        if not isFull() then
             expandToFull()
             setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
             status.Text = "Status: READY"
@@ -935,9 +826,6 @@ plr.Chatted:Connect(function(msg)
         end
     end
 
-    -------------------------------------------------
-    -- MODULE ROUTING
-    -------------------------------------------------
     if msg == "!acq" then ACQUIRE() end
     if msg == "!ecu" then ECU() end
     if msg == "!key" then KEY() end
