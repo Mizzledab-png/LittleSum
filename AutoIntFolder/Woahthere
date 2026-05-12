@@ -22,6 +22,8 @@ local CFG = {
 local function tween(obj, props, t)
     return TweenService:Create(obj, TweenInfo.new(t or CFG.FadeTime, Enum.EasingStyle.Quad), props)
 end
+
+-- UI ROOT
 local gui = Instance.new("ScreenGui")
 gui.Name = "AUTEL_PROPAD"
 gui.IgnoreGuiInset = true
@@ -72,6 +74,7 @@ textLabel.TextXAlignment = Enum.TextXAlignment.Left
 textLabel.TextYAlignment = Enum.TextYAlignment.Top
 textLabel.TextWrapped = true
 textLabel.Text = ""
+
 local panel = Instance.new("Frame", full)
 panel.Size = UDim2.new(0.42,0,0.78,0)
 panel.Position = UDim2.new(0.55,0,0.12,0)
@@ -98,6 +101,8 @@ status.RichText = true
 status.TextColor3 = Color3.fromRGB(200,200,210)
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.Text = "Status: Idle"
+
+-- EXPAND / COLLAPSE
 local isFull = false
 
 local function expand()
@@ -117,6 +122,8 @@ local function collapse()
     tween(tab,{BackgroundTransparency = 0.15})
     task.delay(CFG.FadeTime,function() full.Visible = false end)
 end
+
+-- TRUE VEHICLE DETECTION (FINAL CORE)
 local BAD_NAMES = {
     ["Ensure"] = true,
     ["Futon"] = true,
@@ -127,7 +134,7 @@ local BAD_NAMES = {
     ["PartyST"] = true,
 }
 
-local VehicleCache = {}
+local VehicleCache = {}  -- model → true/false
 
 local function classifyVehicle(model)
     if VehicleCache[model] ~= nil then
@@ -142,10 +149,10 @@ local function classifyVehicle(model)
     local hasSeat = false
     local partCount = 0
 
-    for _,d in ipairs(model:GetChildren()) do
-        if d:IsA("BasePart") then
+    for _,child in ipairs(model:GetChildren()) do
+        if child:IsA("BasePart") then
             partCount += 1
-        elseif d:IsA("VehicleSeat") or d:IsA("Seat") then
+        elseif child:IsA("VehicleSeat") or child:IsA("Seat") then
             hasSeat = true
         end
     end
@@ -165,11 +172,16 @@ local function resolveVehicle(seat)
     end
     return seat
 end
+
+-- VEHICLE DATABASE
 local VehicleDB = {}
 
 local function registerSeat(seat)
     if not (seat:IsA("VehicleSeat") or seat:IsA("Seat")) then return end
-    VehicleDB[seat] = {seat = seat, car = resolveVehicle(seat)}
+    VehicleDB[seat] = {
+        seat = seat,
+        car = resolveVehicle(seat)
+    }
 end
 
 local function unregisterSeat(inst)
@@ -197,6 +209,23 @@ workspace.DescendantAdded:Connect(function(inst)
 end)
 
 workspace.DescendantRemoving:Connect(unregisterSeat)
+
+-- SAFE POSITION RESOLVER
+local function getCarPosition(car, seat)
+    if car:IsA("Model") then
+        if car.PrimaryPart then
+            return car.PrimaryPart.Position
+        end
+        for _,child in ipairs(car:GetChildren()) do
+            if child:IsA("BasePart") then
+                return child.Position
+            end
+        end
+    end
+    return seat.Position
+end
+
+-- BUILD VEHICLE LIST
 local function buildList()
     local list = {}
     local char = plr.Character or plr.CharacterAdded:Wait()
@@ -206,7 +235,7 @@ local function buildList()
     for seat,info in pairs(VehicleDB) do
         local car = info.car
         if car and car.Parent then
-            local pos = car.PrimaryPart and car.PrimaryPart.Position or seat.Position
+            local pos = getCarPosition(car, seat)
             table.insert(list,{
                 car = car,
                 seat = seat,
@@ -218,6 +247,8 @@ local function buildList()
     table.sort(list,function(a,b) return a.dist < b.dist end)
     return list
 end
+
+-- DISTANCE BAR
 local function makeBar(dist)
     local maxDist = 300
     local pct = math.clamp(dist / maxDist, 0, 1)
@@ -241,6 +272,8 @@ local function makeBar(dist)
 
     return bar
 end
+
+-- TARGET SELECTION + REPROGRAM
 local lastTarget = nil
 
 local function ACQUIRE()
@@ -281,6 +314,7 @@ local function ACQUIRE()
 
     scroll.CanvasSize = UDim2.new(0,0,0,y)
 end
+
 local function REPROGRAM()
     if not lastTarget then
         textLabel.Text = "<b>REPROGRAM</b>\nNo target selected."
@@ -300,6 +334,8 @@ local function REPROGRAM()
     textLabel.Text = "<b>REPROGRAM COMPLETE</b>\nSeat unlocked.\nObstacles cleared."
     status.Text = "Status: ECU // COMPLETE"
 end
+
+-- BUTTONS + INPUT
 local function makeButton(label, order, callback)
     local b = Instance.new("TextButton", full)
     b.Size = UDim2.new(0,180,0,40)
