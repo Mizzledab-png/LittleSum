@@ -278,7 +278,7 @@ local function showTargetUI(car)
     local pct = 0
     progressUpdater = rs.Heartbeat:Connect(function()
         if pct < 100 then
-            pct += 0.35
+            pct += 2
             progressLabel.Text = getProgressBar(pct)
         else
             progressLabel.Text = "<font color='rgb(0,255,0)'>COMPLETE</font>"
