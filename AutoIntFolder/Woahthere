@@ -1,1 +1,598 @@
-aa
+--========================================================--
+-- AUTEL PROPAD V2 - ULTRA CLEAN + SYNCED (NO 3D MODEL)
+--========================================================--
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local lp = Players.LocalPlayer
+
+--========================================================--
+-- GUI ROOT
+--========================================================--
+
+local parentGui = gethui and gethui() or lp:WaitForChild("PlayerGui")
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "AUTEL"
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+gui.Parent = parentGui
+
+local function roundify(obj, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius)
+    c.Parent = obj
+end
+
+--========================================================--
+-- PROPAD V2 LAYOUT (SCREEN GUI)
+--========================================================--
+
+local tablet = Instance.new("Frame")
+tablet.Name = "TabletRoot"
+tablet.Size = UDim2.new(0, 320, 0, 260)
+tablet.AnchorPoint = Vector2.new(1, 1)
+tablet.Position = UDim2.new(1, -20, 1, -20)
+tablet.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+tablet.BorderSizePixel = 0
+tablet.Visible = false
+tablet.Parent = gui
+roundify(tablet, 10)
+
+-- Top bar
+local topBar = Instance.new("Frame")
+topBar.Name = "TopBar"
+topBar.Size = UDim2.new(1, 0, 0, 30)
+topBar.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+topBar.BorderSizePixel = 0
+topBar.Parent = tablet
+
+local topTitle = Instance.new("TextLabel")
+topTitle.Size = UDim2.new(0.5, 0, 1, 0)
+topTitle.Position = UDim2.new(0, 6, 0, 0)
+topTitle.BackgroundTransparency = 1
+topTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+topTitle.TextScaled = true
+topTitle.Font = Enum.Font.SourceSansBold
+topTitle.TextXAlignment = Enum.TextXAlignment.Left
+topTitle.Text = "AUTEL"
+topTitle.Parent = topBar
+
+local topInfo = Instance.new("TextLabel")
+topInfo.Size = UDim2.new(0.5, -6, 1, 0)
+topInfo.Position = UDim2.new(0.5, 0, 0, 0)
+topInfo.BackgroundTransparency = 1
+topInfo.TextColor3 = Color3.fromRGB(255, 255, 255)
+topInfo.TextScaled = true
+topInfo.Font = Enum.Font.SourceSans
+topInfo.TextXAlignment = Enum.TextXAlignment.Right
+topInfo.Text = "Unlinked"
+topInfo.Parent = topBar
+
+-- Left nav
+local nav = Instance.new("Frame")
+nav.Name = "Nav"
+nav.Size = UDim2.new(0, 70, 1, -50)
+nav.Position = UDim2.new(0, 0, 0, 30)
+nav.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+nav.BorderSizePixel = 0
+nav.Parent = tablet
+
+-- Main panel
+local mainPanel = Instance.new("Frame")
+mainPanel.Name = "MainPanel"
+mainPanel.Size = UDim2.new(1, -70, 1, -50)
+mainPanel.Position = UDim2.new(0, 70, 0, 30)
+mainPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainPanel.BorderSizePixel = 0
+mainPanel.Parent = tablet
+
+local mainText = Instance.new("TextLabel")
+mainText.Name = "MainText"
+mainText.Size = UDim2.new(1, -10, 1, -10)
+mainText.Position = UDim2.new(0, 5, 0, 5)
+mainText.BackgroundTransparency = 1
+mainText.TextColor3 = Color3.fromRGB(255, 255, 255)
+mainText.TextScaled = true
+mainText.Font = Enum.Font.SourceSansBold
+mainText.TextWrapped = true
+mainText.TextXAlignment = Enum.TextXAlignment.Left
+mainText.TextYAlignment = Enum.TextYAlignment.Top
+mainText.Text = "Select a module on the left."
+mainText.Parent = mainPanel
+
+-- Bottom status bar
+local statusBar = Instance.new("Frame")
+statusBar.Name = "StatusBar"
+statusBar.Size = UDim2.new(1, 0, 0, 20)
+statusBar.Position = UDim2.new(0, 0, 1, -20)
+statusBar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+statusBar.BorderSizePixel = 0
+statusBar.Parent = tablet
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "StatusLabel"
+statusLabel.Size = UDim2.new(1, -10, 1, 0)
+statusLabel.Position = UDim2.new(0, 5, 0, 0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+statusLabel.TextScaled = true
+statusLabel.Font = Enum.Font.SourceSansBold
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Text = "Status: Ready"
+statusLabel.Parent = statusBar
+
+local function setStatus(text, color)
+    statusLabel.Text = "Status: " .. text
+    statusLabel.TextColor3 = color or Color3.fromRGB(0, 255, 0)
+end
+
+local function setMain(text)
+    mainText.Text = text
+end
+
+--========================================================--
+-- NAV BUTTONS
+--========================================================--
+
+local currentMode = "NONE"
+local navButtons = {}
+
+local function makeNavButton(name, order)
+    local b = Instance.new("TextButton")
+    b.Name = name
+    b.Size = UDim2.new(1, 0, 0, 32)
+    b.Position = UDim2.new(0, 0, 0, (order - 1) * 34)
+    b.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    b.BorderSizePixel = 0
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.TextScaled = true
+    b.Font = Enum.Font.SourceSansBold
+    b.Text = name
+    b.AutoButtonColor = false
+    b.Parent = nav
+    navButtons[name] = b
+    return b
+end
+
+local function highlightNav(name)
+    for n, btn in pairs(navButtons) do
+        btn.BackgroundColor3 = (n == name) and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(25, 25, 25)
+    end
+    currentMode = name
+end
+
+local scanNav  = makeNavButton("SCAN",    1)
+local spoofNav = makeNavButton("SPOOF",   2)
+local sonarNav = makeNavButton("SONAR",   3)
+local setNav   = makeNavButton("SET",     4)
+local exitNav  = makeNavButton("EXIT",    5)
+
+--========================================================--
+-- LINK STATUS (Connected / Unlinked)
+--========================================================--
+
+local isLinked = false
+local surfaceTablet -- forward declaration for use in updateLinkStatus
+
+local function updateLinkStatus()
+    local text = isLinked and "Connected" or "Unlinked"
+    topInfo.Text = text
+
+    if surfaceTablet then
+        local sTop = surfaceTablet:FindFirstChild("TopBar", true)
+        if sTop then
+            local sInfo = sTop:FindFirstChild("TextLabel", true)
+            if sInfo then
+                sInfo.Text = text
+            end
+        end
+    end
+end
+
+--========================================================--
+-- SURFACE GUI SYNC (NO 3D MODEL)
+--========================================================--
+
+local virtualBody = Instance.new("Part")
+virtualBody.Name = "VirtualAutelScreen_V2"
+virtualBody.Size = Vector3.new(4, 4, 0.1)
+virtualBody.Transparency = 1
+virtualBody.Anchored = true
+virtualBody.CanCollide = false
+virtualBody.CFrame = CFrame.new(0, 1000, 0)
+virtualBody.Parent = workspace
+
+local surfaceGui = Instance.new("SurfaceGui")
+surfaceGui.Name = "AutelSurface_V2"
+surfaceGui.Face = Enum.NormalId.Front
+surfaceGui.AlwaysOnTop = true
+surfaceGui.LightInfluence = 1
+surfaceGui.CanvasSize = Vector2.new(800, 800)
+surfaceGui.Parent = virtualBody
+
+surfaceTablet = tablet:Clone()
+surfaceTablet.Name = "TabletRootSurface"
+surfaceTablet.AnchorPoint = Vector2.new(0.5, 0.5)
+surfaceTablet.Position = UDim2.new(0.5, 0, 0.5, 0)
+surfaceTablet.Parent = surfaceGui
+
+local surfaceMainText = surfaceTablet:FindFirstChild("MainText", true)
+local surfaceStatusLabel = surfaceTablet:FindFirstChild("StatusLabel", true)
+
+local function syncMain(text)
+    setMain(text)
+    if surfaceMainText then
+        surfaceMainText.Text = text
+    end
+end
+
+local function syncStatus(text, color)
+    setStatus(text, color)
+    if surfaceStatusLabel then
+        surfaceStatusLabel.Text = "Status: " .. text
+        surfaceStatusLabel.TextColor3 = color or Color3.fromRGB(0, 255, 0)
+    end
+end
+
+local function syncVisibility()
+    surfaceTablet.Visible = tablet.Visible
+end
+
+--========================================================--
+-- VEHICLE DETECTION
+--========================================================--
+
+local vehicleSeats = {}
+local carRegistered = {}
+local attributesInitialized = {}
+
+local function getTopmostModelFromSeat(seat)
+    local current = seat
+    local topModel = nil
+    while current and current.Parent do
+        if current:IsA("Model") then
+            topModel = current
+        end
+        if current.Parent == workspace then break end
+        current = current.Parent
+    end
+    return topModel
+end
+
+local function registerCar(seat)
+    if not seat:IsA("VehicleSeat") then return end
+    local car = getTopmostModelFromSeat(seat)
+    if car and not carRegistered[car] then
+        carRegistered[car] = true
+        table.insert(vehicleSeats, seat)
+    end
+end
+
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("VehicleSeat") then registerCar(obj) end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("VehicleSeat") then registerCar(obj) end
+end)
+
+workspace.DescendantRemoving:Connect(function(obj)
+    if obj:IsA("Model") and carRegistered[obj] then
+        carRegistered[obj] = nil
+        attributesInitialized[obj] = nil
+        for i = #vehicleSeats, 1, -1 do
+            local seat = vehicleSeats[i]
+            if not seat.Parent or getTopmostModelFromSeat(seat) == obj then
+                table.remove(vehicleSeats, i)
+            end
+        end
+    end
+end)
+
+local function ensureCarAttributes(car)
+    if attributesInitialized[car] then return end
+    attributesInitialized[car] = true
+
+    if not car:GetAttribute("KeyCode") then
+        car:SetAttribute("KeyCode", tostring(math.random(100000, 999999)))
+    end
+    if car:GetAttribute("Locked") == nil then
+        car:SetAttribute("Locked", true)
+    end
+end
+
+local function findCar(opts)
+    opts = opts or {}
+    local useForward = opts.useForward or false
+    local maxDist = opts.maxDist or math.huge
+    local minDot = opts.minDot or 0
+
+    local char = lp.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    local cam = workspace.CurrentCamera
+    local forward = cam and cam.CFrame.LookVector or Vector3.new(0, 0, -1)
+
+    local bestCar, bestDist = nil, maxDist
+
+    for _, seat in ipairs(vehicleSeats) do
+        if seat.Parent then
+            local car = getTopmostModelFromSeat(seat)
+            if car then
+                local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+                if primary then
+                    local offset = primary.Position - root.Position
+                    local dist = offset.Magnitude
+                    if dist <= bestDist then
+                        if useForward then
+                            if forward:Dot(offset.Unit) >= minDot then
+                                bestCar, bestDist = car, dist
+                            end
+                        else
+                            bestCar, bestDist = car, dist
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return bestCar
+end
+
+--========================================================--
+-- SONAR UI
+--========================================================--
+
+local activeDistanceUIs = {}
+
+local function clearAllSonarUI()
+    for car, entry in pairs(activeDistanceUIs) do
+        if entry.gui then entry.gui:Destroy() end
+        activeDistanceUIs[car] = nil
+    end
+end
+
+local function createDistanceUI(car)
+    local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+    if not primary then return end
+
+    if car:FindFirstChild("AutelDistanceUI") then
+        car.AutelDistanceUI:Destroy()
+    end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "AutelDistanceUI"
+    billboard.Size = UDim2.new(0, 120, 0, 40)
+    billboard.Adornee = primary
+    billboard.AlwaysOnTop = true
+    billboard.StudsOffset = Vector3.new(0, 4, 0)
+    billboard.Parent = car
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255, 0, 0)
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSansBold
+    label.Text = "Distance: ???"
+    label.Parent = billboard
+
+    activeDistanceUIs[car] = {
+        gui = billboard,
+        label = label,
+        primary = primary,
+    }
+end
+
+RunService.Heartbeat:Connect(function()
+    if currentMode ~= "SONAR" then return end
+    if next(activeDistanceUIs) == nil then return end
+
+    local char = lp.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then
+        clearAllSonarUI()
+        return
+    end
+
+    for car, entry in pairs(activeDistanceUIs) do
+        local primary = entry.primary
+        if not car.Parent or not primary or not primary.Parent then
+            entry.gui:Destroy()
+            activeDistanceUIs[car] = nil
+        else
+            local dist = (primary.Position - root.Position).Magnitude
+            entry.label.Text = "Distance: " .. math.floor(dist) .. " studs"
+        end
+    end
+end)
+
+--========================================================--
+-- SPOOF
+--========================================================--
+
+local spoofedKeys = {}
+local lastScannedCar = nil
+
+local function spoofKey(car)
+    local code = car:GetAttribute("KeyCode")
+    if not code then
+        syncStatus("Car has no key", Color3.fromRGB(255, 0, 0))
+        return
+    end
+
+    spoofedKeys[code] = true
+    isLinked = true
+    updateLinkStatus()
+
+    car:SetAttribute("Locked", false)
+
+    for _, d in ipairs(car:GetDescendants()) do
+        if d:IsA("VehicleSeat") or d:IsA("Seat") then d.Disabled = false end
+        if d:IsA("BasePart") then d.Anchored = false end
+        if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
+        if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
+        if d:IsA("Script") or d:IsA("LocalScript") then
+            local n = d.Name:lower()
+            if n:find("lock") or n:find("immobil") or n:find("engine") then
+                d.Disabled = true
+            end
+        end
+    end
+
+    syncStatus("Spoofed: " .. car.Name, Color3.fromRGB(0, 255, 0))
+    syncMain("SPOOF MODULE\n\nVehicle: " .. car.Name .. "\nKey spoofed and locks bypassed.")
+end
+
+--========================================================--
+-- NAVIGATION LOGIC
+--========================================================--
+
+scanNav.MouseButton1Click:Connect(function()
+    isLinked = false
+    updateLinkStatus()
+    clearAllSonarUI()
+    highlightNav("SCAN")
+
+    local car = findCar({
+        useForward = true,
+        maxDist = 25,
+        minDot = 0.3,
+    })
+
+    if not car then
+        syncStatus("No car found", Color3.fromRGB(255, 0, 0))
+        syncMain("SCAN MODULE\n\nNo vehicle detected in front of you.")
+        return
+    end
+
+    ensureCarAttributes(car)
+    lastScannedCar = car
+
+    local char = lp.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+    local dist = (root and primary) and (primary.Position - root.Position).Magnitude or 0
+    local locked = car:GetAttribute("Locked")
+
+    syncStatus("Target acquired: " .. car.Name, Color3.fromRGB(0, 255, 0))
+    syncMain(string.format(
+        "SCAN MODULE\n\nNearest Vehicle:\nName: %s\nDistance: %d studs\nLocked: %s",
+        car.Name,
+        math.floor(dist),
+        tostring(locked)
+    ))
+end)
+
+spoofNav.MouseButton1Click:Connect(function()
+    isLinked = false
+    updateLinkStatus()
+    clearAllSonarUI()
+    highlightNav("SPOOF")
+
+    if not lastScannedCar then
+        syncStatus("Scan a car first", Color3.fromRGB(255, 170, 0))
+        syncMain("SPOOF MODULE\n\nNo vehicle selected.\nRun SCAN first.")
+        return
+    end
+
+    ensureCarAttributes(lastScannedCar)
+    spoofKey(lastScannedCar)
+end)
+
+sonarNav.MouseButton1Click:Connect(function()
+    isLinked = false
+    updateLinkStatus()
+    clearAllSonarUI()
+    highlightNav("SONAR")
+
+    if #vehicleSeats == 0 then
+        syncStatus("No cars found", Color3.fromRGB(255, 0, 0))
+        syncMain("SONAR MODULE\n\nNo vehicles detected in the world.")
+        return
+    end
+
+    local closestCar = findCar({
+        useForward = false,
+        maxDist = math.huge,
+    })
+
+    if not closestCar then
+        syncStatus("No cars detected", Color3.fromRGB(255, 0, 0))
+        syncMain("SONAR MODULE\n\nNo vehicles in range.")
+        return
+    end
+
+    createDistanceUI(closestCar)
+
+    local char = lp.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local primary = closestCar.PrimaryPart or closestCar:FindFirstChildWhichIsA("BasePart", true)
+    local dist = (root and primary) and (primary.Position - root.Position).Magnitude or 0
+
+    syncStatus("SONAR tracking: " .. closestCar.Name, Color3.fromRGB(0, 255, 0))
+    syncMain(string.format(
+        "SONAR MODULE\n\nClosest Vehicle:\nName: %s\nDistance: %d studs\n\nDistance label stays above the car while SONAR is active.",
+        closestCar.Name,
+        math.floor(dist)
+    ))
+end)
+
+setNav.MouseButton1Click:Connect(function()
+    isLinked = false
+    updateLinkStatus()
+    clearAllSonarUI()
+    highlightNav("SET")
+
+    syncStatus("Settings open", Color3.fromRGB(0, 255, 0))
+    syncMain("SETTINGS MODULE\n\nKeybind: T\nTheme: Ultra Clean\nSync: Enabled\n\nValues are static in this build.")
+end)
+
+exitNav.MouseButton1Click:Connect(function()
+    isLinked = false
+    updateLinkStatus()
+    clearAllSonarUI()
+    highlightNav("EXIT")
+
+    syncStatus("Closed", Color3.fromRGB(255, 170, 0))
+    tablet.Visible = false
+    syncVisibility()
+end)
+
+--========================================================--
+-- TOGGLE TABLET
+--========================================================--
+
+local function toggleTablet()
+    tablet.Visible = not tablet.Visible
+    syncVisibility()
+
+    if tablet.Visible then
+        isLinked = false
+        updateLinkStatus()
+        clearAllSonarUI()
+        highlightNav("NONE")
+        syncStatus("Ready", Color3.fromRGB(0, 255, 0))
+        syncMain("Select a module on the left.")
+    else
+        clearAllSonarUI()
+    end
+end
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        toggleTablet()
+    end
+end)
+
+lp.Chatted:Connect(function(msg)
+    if msg:lower() == "!autel" then
+        toggleTablet()
+    end
+end)
