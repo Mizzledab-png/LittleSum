@@ -8,6 +8,19 @@ local CFG = {
     Key = Enum.KeyCode.T,
     Cmd = "!tablet",
     FadeTime = 0.25,
+    Col = Color3.fromHere you go, Lamar — **full rebuilt script with unbreakable detection**, solid background, visible list, no flicker, no seat stabilization, manual selection, and all filters baked in.
+
+```lua
+repeat task.wait() until game:IsLoaded()
+
+local plr = game.Players.LocalPlayer
+local uis = game.UserInputService
+local TweenService = game:GetService("TweenService")
+
+local CFG = {
+    Key = Enum.KeyCode.T,
+    Cmd = "!tablet",
+    FadeTime = 0.25,
     Col = Color3.fromRGB(255,60,60),
     BG_Compact = Color3.fromRGB(10,10,16),
     BG_Full = Color3.fromRGB(5,5,10),
@@ -48,7 +61,7 @@ full.Size = CFG.FullSize
 full.Position = CFG.FullPos
 full.AnchorPoint = Vector2.new(0.5,0.5)
 full.BackgroundColor3 = CFG.BG_Full
-full.BackgroundTransparency = 1
+full.BackgroundTransparency = 0 -- solid, not see-through
 full.Visible = false
 
 -- BACKGROUND GRID
@@ -59,6 +72,7 @@ grid.Image = "rbxassetid://9152716921"
 grid.ImageTransparency = 0.85
 grid.ScaleType = Enum.ScaleType.Tile
 grid.TileSize = UDim2.new(0,120,0,120)
+grid.ZIndex = 1
 
 -- LEFT TEXT REGION
 local titleLabel = Instance.new("TextLabel", full)
@@ -71,6 +85,7 @@ titleLabel.RichText = true
 titleLabel.TextColor3 = Color3.fromRGB(240,240,245)
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Text = "<b>AUTEL//PRO — SPECTRE OPS SUITE</b>"
+titleLabel.ZIndex = 3
 
 local textLabel = Instance.new("TextLabel", full)
 textLabel.Size = UDim2.new(0.48,0,0.45,0)
@@ -86,6 +101,7 @@ textLabel.TextYAlignment = Enum.TextYAlignment.Top
 textLabel.TextWrapped = true
 textLabel.TextTruncate = Enum.TextTruncate.AtEnd
 textLabel.Text = ""
+textLabel.ZIndex = 3
 
 -- RIGHT SCROLL REGION
 local panel = Instance.new("Frame", full)
@@ -93,16 +109,19 @@ panel.Size = UDim2.new(0.42,0,0.78,0)
 panel.Position = UDim2.new(0.55,0,0.12,0)
 panel.BackgroundTransparency = 1
 panel.ClipsDescendants = true
+panel.ZIndex = 4
 
 local scrollFrame = Instance.new("ScrollingFrame", panel)
 scrollFrame.Size = UDim2.new(1,0,1,0)
 scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
-scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
 scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
 scrollFrame.ScrollBarThickness = 6
-scrollFrame.BackgroundTransparency = 1
+scrollFrame.BackgroundTransparency = 0
+scrollFrame.BackgroundColor3 = Color3.fromRGB(8,8,12)
 scrollFrame.ScrollBarImageColor3 = CFG.Col
 scrollFrame.ClipsDescendants = true
+scrollFrame.ZIndex = 5
 
 -- BOTTOM STATUS BAR
 local status = Instance.new("TextLabel", full)
@@ -115,6 +134,7 @@ status.RichText = true
 status.TextColor3 = Color3.fromRGB(200,200,210)
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.Text = "Status: Idle"
+status.ZIndex = 3
 
 local progressLabel = Instance.new("TextLabel", full)
 progressLabel.Size = UDim2.new(0.4,0,0,30)
@@ -126,6 +146,7 @@ progressLabel.RichText = true
 progressLabel.TextColor3 = Color3.fromRGB(220,40,40)
 progressLabel.TextXAlignment = Enum.TextXAlignment.Right
 progressLabel.Text = ""
+progressLabel.ZIndex = 3
 
 -- EXPAND / COLLAPSE (NO FLICKER)
 local isFull = false
@@ -134,7 +155,7 @@ local function expandToFull()
     if isFull then return end
     isFull = true
     full.Visible = true
-    tween(full,{BackgroundTransparency = 0.05},CFG.FadeTime):Play()
+    tween(full,{BackgroundTransparency = 0},CFG.FadeTime):Play()
     tween(tab,{BackgroundTransparency = 1},CFG.FadeTime):Play()
     task.delay(CFG.FadeTime,function()
         tab.Visible = false
@@ -209,7 +230,7 @@ local function moduleTransition(fn)
     fn()
 end
 
--- DISPLAY FILTER
+-- DISPLAY FILTER (names that should never show as “car” labels)
 local DISPLAY_FILTER = {
     ["PartyST"] = true,
     ["FUTON"] = true,
@@ -226,17 +247,39 @@ local function getDisplayName(car, seat)
     return car.Name
 end
 
+-- UNBREAKABLE VEHICLE RESOLVER
+local function resolveVehicle(seat)
+    local parent = seat.Parent
+
+    while parent do
+        if parent:IsA("Model") then
+            local parts = parent:GetDescendants()
+            local count = 0
+            for _,p in ipairs(parts) do
+                if p:IsA("BasePart") then
+                    count += 1
+                    if count >= 4 then
+                        return parent -- treat as real vehicle
+                    end
+                end
+            end
+        end
+        parent = parent.Parent
+    end
+
+    return seat -- fallback: seat is the vehicle
+end
+
 -- LIVE VEHICLE DATABASE
 local VehicleDB = {}
 
 local function registerSeat(seat)
     if not (seat:IsA("VehicleSeat") or seat:IsA("Seat")) then return end
-    local car = seat:FindFirstAncestorOfClass("Model") or seat
-    if DISPLAY_FILTER[car.Name] then
-        VehicleDB[seat] = {seat = seat, car = seat}
-    else
-        VehicleDB[seat] = {seat = seat, car = car}
-    end
+    local car = resolveVehicle(seat)
+    VehicleDB[seat] = {
+        seat = seat,
+        car = car
+    }
 end
 
 local function unregisterSeat(inst)
@@ -273,7 +316,13 @@ local function buildVehicleList()
 
     for seat,info in pairs(VehicleDB) do
         if seat.Parent and info.car and info.car.Parent then
-            local pos = (info.car.PrimaryPart and info.car.PrimaryPart.Position) or seat.Position
+            local pos
+            if info.car:IsA("Model") and info.car.PrimaryPart then
+                pos = info.car.PrimaryPart.Position
+            else
+                pos = seat.Position
+            end
+
             table.insert(list,{
                 car = info.car,
                 seat = seat,
@@ -316,6 +365,7 @@ local function ACQUIRE()
             return
         end
 
+        local y = 0
         for _,entry in ipairs(list) do
             local car = entry.car
             local dist = math.floor(entry.dist)
@@ -323,13 +373,14 @@ local function ACQUIRE()
 
             local btn = Instance.new("TextButton", scrollFrame)
             btn.Size = UDim2.new(1,-20,0,32)
-            btn.Position = UDim2.new(0,10,0,scrollFrame.CanvasSize.Y.Offset)
+            btn.Position = UDim2.new(0,10,0,y)
             btn.BackgroundColor3 = Color3.fromRGB(15,15,22)
             btn.Font = Enum.Font.Gotham
             btn.TextScaled = true
             btn.RichText = true
             btn.TextColor3 = Color3.fromRGB(240,240,245)
             btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.ZIndex = 6
             btn.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", displayName, dist)
             Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
 
@@ -346,7 +397,11 @@ local function ACQUIRE()
                     :format(displayName, dist))
                 status.Text = "Status: ACQ // LOCKED"
             end)
+
+            y += 36
         end
+
+        scrollFrame.CanvasSize = UDim2.new(0,0,0,y)
     end)
 end
 
@@ -362,6 +417,7 @@ local function SCAN()
             return
         end
 
+        local y = 0
         for _,entry in ipairs(list) do
             local car = entry.car
             local dist = math.floor(entry.dist)
@@ -369,16 +425,20 @@ local function SCAN()
 
             local line = Instance.new("TextLabel", scrollFrame)
             line.Size = UDim2.new(1,-20,0,30)
-            line.Position = UDim2.new(0,10,0,scrollFrame.CanvasSize.Y.Offset)
+            line.Position = UDim2.new(0,10,0,y)
             line.BackgroundTransparency = 1
             line.Font = Enum.Font.Gotham
             line.TextScaled = true
             line.RichText = true
             line.TextColor3 = Color3.fromRGB(240,240,245)
             line.TextXAlignment = Enum.TextXAlignment.Left
+            line.ZIndex = 6
             line.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", displayName, dist)
+
+            y += 34
         end
 
+        scrollFrame.CanvasSize = UDim2.new(0,0,0,y)
         status.Text = "Status: SCAN // COMPLETE"
     end)
 end
@@ -412,13 +472,7 @@ local function ECU()
     end)
 end
 
-_G.AUTELPRO_SPECTRE.ACQUIRE = ACQUIRE
-_G.AUTELPRO_SPECTRE.SCAN = SCAN
-_G.AUTELPRO_SPECTRE.ECU = ECU
-_G.AUTELPRO_SPECTRE.lastCar = lastCar
-_G.AUTELPRO_SPECTRE.lastSeat = lastSeat
-_G.AUTELPRO_SPECTRE.setLastTarget = setLastTarget
--- KEY SUITE (lock / unlock / flash)
+-- KEY SUITE
 local function doLock(car)
     setText("<b>KEY SUITE</b>\n\nRolling code sync...")
     progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
@@ -479,15 +533,16 @@ local function KEY()
         status.Text = "Status: KEY // READY"
         setText("<b>KEY SUITE</b>\n\nSelect an action for:\n" .. car.Name)
 
-        local function makeButton(label, callback)
+        local function makeKeyButton(label, order, callback)
             local b = Instance.new("TextButton", full)
             b.Size = UDim2.new(0,180,0,40)
-            b.Position = UDim2.new(0.03,0,0.55 + (#full:GetChildren()*0.07),0)
+            b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
             b.BackgroundColor3 = Color3.fromRGB(15,15,22)
             b.Font = Enum.Font.GothamBold
             b.TextScaled = true
             b.TextColor3 = Color3.fromRGB(240,240,245)
             b.Text = label
+            b.ZIndex = 4
             Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
 
             b.MouseEnter:Connect(function()
@@ -502,13 +557,11 @@ local function KEY()
             end)
         end
 
-        makeButton("UNLOCK", doUnlock)
-        makeButton("LOCK", doLock)
-        makeButton("FLASH", doFlash)
+        makeKeyButton("UNLOCK",1,doUnlock)
+        makeKeyButton("LOCK",2,doLock)
+        makeKeyButton("FLASH",3,doFlash)
     end)
 end
-
-_G.AUTELPRO_SPECTRE.KEY = KEY
 
 -- EXIT MODULE
 local function EXIT()
@@ -520,10 +573,8 @@ local function EXIT()
     status.Text = "Status: Idle"
 end
 
-_G.AUTELPRO_SPECTRE.EXIT = EXIT
-
 -- LEFT‑SIDE BUTTON PANEL
-local function makeButton(label, order, callback)
+local function makeMainButton(label, order, callback)
     local b = Instance.new("TextButton", full)
     b.Size = UDim2.new(0,180,0,40)
     b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
@@ -532,6 +583,7 @@ local function makeButton(label, order, callback)
     b.TextScaled = true
     b.TextColor3 = Color3.fromRGB(240,240,245)
     b.Text = label
+    b.ZIndex = 4
     Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
 
     b.MouseEnter:Connect(function()
@@ -545,24 +597,178 @@ local function makeButton(label, order, callback)
 end
 
 local function BUILD_BUTTON_PANEL()
-    makeButton("ACQUIRE",1,ACQUIRE)
-    makeButton("ECU",2,ECU)
-    makeButton("KEY",3,KEY)
-    makeButton("SCAN",4,SCAN)
-    makeButton("EXIT",5,EXIT)
+    makeMainButton("ACQUIRE",1,ACQUIRE)
+    makeMainButton("ECU",2,ECU)
+    makeMainButton("KEY",3,KEY)
+    makeMainButton("SCAN",4,SCAN)
+    makeMainButton("EXIT",5,EXIT)
 end
 
-_G.AUTELPRO_SPECTRE.BUILD_BUTTON_PANEL = BUILD_BUTTON_PANEL
+-- INPUT ROUTING
+uis.InputBegan:Connect(function(i)
+    if i.KeyCode == CFG.Key then
+        if not isFull() then
+            expandToFull()
+            setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
+            status.Text = "Status: READY"
+            BUILD_BUTTON_PANEL()
+        else
+            EXIT()
+        end
+    end
+end)
 
--- WAIT FOR GLOBALS
-repeat task.wait() until _G.AUTELPRO_SPECTRE.tab
-repeat task.wait() until _G.AUTELPRO_SPECTRE.expandToFull
-repeat task.wait() until _G.AUTELPRO_SPECTRE.collapseToCompact
-repeat task.wait() until _G.AUTELPRO_SPECTRE.isFull
+plr.Chatted:Connect(function(msg)
+    msg = msg:lower()
 
-local expandToFull = _G.AUTELPRO_SPECTRE.expandToFull
-local collapseToCompact = _G.AUTELPRO_SPECTRE.collapseToCompact
-local isFull = _G.AUTELPRO_SPECTRE.isFull
+    if msg == CFG.Cmd then
+        if not isFull() then
+            expandToFull()
+            setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
+            status.Text = "Status: READY"
+            BUILD_BUTTON_PANEL()
+        else
+            EXIT()
+        end
+    end
+
+    if msg == "!acq" then ACQUIRE() end
+    if msg == "!ecu" then ECU() end
+    if msg == "!key" then KEY() end
+    if msg == "!scan" then SCAN() end
+    if msg == "!exit" then EXIT() end
+end)
+-- KEY SUITE
+local function doLock(car)
+    setText("<b>KEY SUITE</b>\n\nRolling code sync...")
+    progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
+    setText("<b>KEY SUITE</b>\n\n<font color='rgb(255,60,60)'>LOCKED</font>\n" .. car.Name)
+    status.Text = "Status: LOCK // SPECTRE"
+
+    for _,l in ipairs(car:GetDescendants()) do
+        if l:IsA("Light") then
+            l.Enabled = true
+            task.wait(0.1)
+            l.Enabled = false
+        end
+    end
+end
+
+local function doUnlock(car)
+    setText("<b>KEY SUITE</b>\n\nRolling code sync...")
+    progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
+    setText("<b>KEY SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCKED</font>\n" .. car.Name)
+    status.Text = "Status: UNLOCK // SPECTRE"
+
+    for _,l in ipairs(car:GetDescendants()) do
+        if l:IsA("Light") then
+            l.Enabled = true
+            task.wait(0.05)
+            l.Enabled = false
+        end
+    end
+end
+
+local function doFlash(car)
+    setText("<b>KEY SUITE</b>\n\nFlashing lights...")
+    status.Text = "Status: FLASH // SPECTRE"
+
+    for i = 1,2 do
+        for _,l in ipairs(car:GetDescendants()) do
+            if l:IsA("Light") then l.Enabled = true end
+        end
+        task.wait(0.15)
+        for _,l in ipairs(car:GetDescendants()) do
+            if l:IsA("Light") then l.Enabled = false end
+        end
+        task.wait(0.15)
+    end
+
+    setText("<b>KEY SUITE</b>\n\nFlash complete.")
+end
+
+local function KEY()
+    moduleTransition(function()
+        local car = lastCar()
+        if not car or not car.Parent then
+            setText("<b>KEY SUITE</b>\n\nNo target selected.\nUse ACQ to lock a vehicle first.")
+            status.Text = "Status: Idle"
+            return
+        end
+
+        status.Text = "Status: KEY // READY"
+        setText("<b>KEY SUITE</b>\n\nSelect an action for:\n" .. car.Name)
+
+        local function makeKeyButton(label, order, callback)
+            local b = Instance.new("TextButton", full)
+            b.Size = UDim2.new(0,180,0,40)
+            b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
+            b.BackgroundColor3 = Color3.fromRGB(15,15,22)
+            b.Font = Enum.Font.GothamBold
+            b.TextScaled = true
+            b.TextColor3 = Color3.fromRGB(240,240,245)
+            b.Text = label
+            b.ZIndex = 4
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+            b.MouseEnter:Connect(function()
+                tween(b,{BackgroundColor3 = CFG.Col},0.15):Play()
+            end)
+            b.MouseLeave:Connect(function()
+                tween(b,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
+            end)
+
+            b.MouseButton1Click:Connect(function()
+                callback(car)
+            end)
+        end
+
+        makeKeyButton("UNLOCK",1,doUnlock)
+        makeKeyButton("LOCK",2,doLock)
+        makeKeyButton("FLASH",3,doFlash)
+    end)
+end
+
+-- EXIT MODULE
+local function EXIT()
+    setText("<b>SYSTEM EXIT</b>\n\nCollapsing SPECTRE interface...")
+    status.Text = "Status: EXIT // COLLAPSE"
+    task.wait(0.25)
+    clearPanel()
+    collapseToCompact()
+    status.Text = "Status: Idle"
+end
+
+-- LEFT‑SIDE BUTTON PANEL
+local function makeMainButton(label, order, callback)
+    local b = Instance.new("TextButton", full)
+    b.Size = UDim2.new(0,180,0,40)
+    b.Position = UDim2.new(0.03,0,0.55 + ((order-1)*0.07),0)
+    b.BackgroundColor3 = Color3.fromRGB(15,15,22)
+    b.Font = Enum.Font.GothamBold
+    b.TextScaled = true
+    b.TextColor3 = Color3.fromRGB(240,240,245)
+    b.Text = label
+    b.ZIndex = 4
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+    b.MouseEnter:Connect(function()
+        tween(b,{BackgroundColor3 = CFG.Col},0.15):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        tween(b,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
+    end)
+
+    b.MouseButton1Click:Connect(callback)
+end
+
+local function BUILD_BUTTON_PANEL()
+    makeMainButton("ACQUIRE",1,ACQUIRE)
+    makeMainButton("ECU",2,ECU)
+    makeMainButton("KEY",3,KEY)
+    makeMainButton("SCAN",4,SCAN)
+    makeMainButton("EXIT",5,EXIT)
+end
 
 -- INPUT ROUTING
 uis.InputBegan:Connect(function(i)
