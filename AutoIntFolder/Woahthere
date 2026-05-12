@@ -68,9 +68,16 @@ grid.ScaleType = Enum.ScaleType.Tile
 grid.TileSize = UDim2.new(0,120,0,120)
 
 local panel = Instance.new("Frame", full)
-panel.Size = UDim2.new(0.5,0,0.6,0)
-panel.Position = UDim2.new(0.05,0,0.25,0)
+panel.Size = UDim2.new(0.5,0,0.45,0)
+panel.Position = UDim2.new(0.05,0,0.5,0)
 panel.BackgroundTransparency = 1
+
+local scrollFrame = Instance.new("ScrollingFrame", panel)
+scrollFrame.Size = UDim2.new(1,0,1,0)
+scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.ScrollBarImageColor3 = CFG.Col
 
 local titleLabel = Instance.new("TextLabel", full)
 titleLabel.Size = UDim2.new(1,0,0,60)
@@ -83,7 +90,7 @@ titleLabel.TextColor3 = Color3.fromRGB(240,240,245)
 titleLabel.Text = "<b>AUTEL//PRO — SPECTRE OPS SUITE</b>"
 
 local textLabel = Instance.new("TextLabel", full)
-textLabel.Size = UDim2.new(0.9,0,0.4,0)
+textLabel.Size = UDim2.new(0.9,0,0.25,0)
 textLabel.Position = UDim2.new(0.05,0,0.18,0)
 textLabel.BackgroundTransparency = 1
 textLabel.Font = Enum.Font.Gotham
@@ -92,6 +99,7 @@ textLabel.RichText = true
 textLabel.TextColor3 = Color3.fromRGB(230,230,235)
 textLabel.TextXAlignment = Enum.TextXAlignment.Left
 textLabel.TextYAlignment = Enum.TextYAlignment.Top
+textLabel.TextWrapped = true
 textLabel.Text = ""
 
 local status = Instance.new("TextLabel", full)
@@ -178,9 +186,12 @@ _G.AUTELPRO_SPECTRE.collapseToCompact = collapseToCompact
 
 local function clearPanel()
     for _,v in ipairs(panel:GetChildren()) do
-        if v:IsA("TextButton") or v:IsA("TextLabel") then
+        if v:IsA("TextButton") then
             v:Destroy()
         end
+    end
+    for _,v in ipairs(scrollFrame:GetChildren()) do
+        v:Destroy()
     end
 end
 
@@ -203,18 +214,30 @@ _G.AUTELPRO_SPECTRE.clearPanel = clearPanel
 
 local function buildVehicleList()
     local list = {}
-    local char = plr.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return list end
-    for _,m in ipairs(workspace:GetDescendants()) do
+
+    local function consider(model)
+        local seat = model:FindFirstChildWhichIsA("VehicleSeat", true)
+        if seat and model.PrimaryPart then
+            local dist = (model.PrimaryPart.Position - root.Position).Magnitude
+            table.insert(list, {car = model, dist = dist})
+        end
+    end
+
+    for _,m in ipairs(workspace:GetChildren()) do
         if m:IsA("Model") then
-            local seat = m:FindFirstChildWhichIsA("VehicleSeat",true)
-            if seat and m.PrimaryPart then
-                local dist = (m.PrimaryPart.Position - root.Position).Magnitude
-                table.insert(list,{car = m, dist = dist})
+            consider(m)
+        elseif m:IsA("Folder") then
+            for _,c in ipairs(m:GetChildren()) do
+                if c:IsA("Model") then
+                    consider(c)
+                end
             end
         end
     end
+
     table.sort(list,function(a,b) return a.dist < b.dist end)
     return list
 end
@@ -363,8 +386,10 @@ local function KEY()
             status.Text = "Status: Idle"
             return
         end
+
         status.Text = "Status: KEY // READY"
         setText("<b>KEY SUITE</b>\n\nSelect an action for:\n" .. car.Name)
+
         local function makeButton(label, callback)
             local b = Instance.new("TextButton", panel)
             b.Size = UDim2.new(1,-20,0,40)
@@ -375,16 +400,19 @@ local function KEY()
             b.TextColor3 = Color3.fromRGB(240,240,245)
             b.Text = label
             Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
             b.MouseEnter:Connect(function()
                 tween(b,{BackgroundColor3 = CFG.Col},0.15):Play()
             end)
             b.MouseLeave:Connect(function()
                 tween(b,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
             end)
+
             b.MouseButton1Click:Connect(function()
                 callback(car)
             end)
         end
+
         makeButton("UNLOCK", doUnlock)
         makeButton("LOCK", doLock)
         makeButton("FLASH", doFlash)
@@ -410,17 +438,21 @@ local function SCAN()
         status.Text = "Status: SCAN // ACTIVE"
         setText("<b>TACTICAL SCAN SUITE</b>\n\nInitializing spectral sweep...")
         radarPulse()
+
         local list = buildVehicleList()
         if #list == 0 then
             setText("<b>TACTICAL SCAN SUITE</b>\n\nNo vehicle signatures detected.\nAO remains cold.")
             return
         end
+
         setText("<b>TACTICAL SCAN SUITE</b>\n\nTargets detected:\n")
-        local y = 260
+
+        local y = 0
         for _,entry in ipairs(list) do
             local car = entry.car
             local dist = math.floor(entry.dist)
-            local line = Instance.new("TextLabel", panel)
+
+            local line = Instance.new("TextLabel", scrollFrame)
             line.Size = UDim2.new(1,-20,0,30)
             line.Position = UDim2.new(0,10,0,y)
             line.BackgroundTransparency = 1
@@ -429,9 +461,12 @@ local function SCAN()
             line.RichText = true
             line.TextColor3 = Color3.fromRGB(240,240,245)
             line.TextXAlignment = Enum.TextXAlignment.Left
-            line.Text = string.format("<b>%s</b>  —  <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
+            line.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
+
             y += 34
         end
+
+        scrollFrame.CanvasSize = UDim2.new(0,0,0,y + 20)
         status.Text = "Status: SCAN // COMPLETE"
     end)
 end
@@ -459,12 +494,14 @@ local function makeButton(label, order, callback)
     b.TextColor3 = Color3.fromRGB(240,240,245)
     b.Text = label
     Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
     b.MouseEnter:Connect(function()
         tween(b,{BackgroundColor3 = CFG.Col},0.15):Play()
     end)
     b.MouseLeave:Connect(function()
         tween(b,{BackgroundColor3 = Color3.fromRGB(15,15,22)},0.15):Play()
     end)
+
     b.MouseButton1Click:Connect(callback)
 end
 
@@ -503,6 +540,7 @@ end)
 
 plr.Chatted:Connect(function(msg)
     msg = msg:lower()
+
     if msg == CFG.Cmd then
         if not isFull() then
             expandToFull()
@@ -513,6 +551,7 @@ plr.Chatted:Connect(function(msg)
             EXIT()
         end
     end
+
     if msg == "!acq" then ACQUIRE() end
     if msg == "!ecu" then ECU() end
     if msg == "!key" then KEY() end
