@@ -31,18 +31,18 @@ local function isValidCarName(name)
 end
 
 local function getSignalBars(dist)
-    if dist <= 30 then return "<font color='rgb(0,255,0)'>▮▮▮</font>"
-    elseif dist <= 100 then return "<font color='rgb(255,255,0)'>▮▮</font>"
-    elseif dist <= 199 then return "<font color='rgb(255,255,0)'>▮</font>"
-    else return "<font color='rgb(255,0,0)'>▮</font>" end
+    if dist <= 30 then return "<font color='rgb(0,255,0)'>▂▃▅</font>"
+    elseif dist <= 100 then return "<font color='rgb(255,255,0)'>▂▃</font>"
+    elseif dist <= 199 then return "<font color='rgb(255,255,0)'>▂</font>"
+    else return "<font color='rgb(255,0,0)'>▂</font>" end
 end
 
 local function getProgressBar(pct)
     local filled = math.floor(pct/10)
     local empty = 10 - filled
     local bar = ""
-    for _=1,filled do bar = bar .. "<font color='rgb(0,255,0)'>▮</font>" end
-    for _=1,empty do bar = bar .. "<font color='rgb(60,60,60)'>▮</font>" end
+    for _=1,filled do bar = bar .. "<font color='rgb(0,255,0)'>▂</font>" end
+    for _=1,empty do bar = bar .. "<font color='rgb(60,60,60)'>▂</font>" end
     return bar
 end
 
