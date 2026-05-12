@@ -2,6 +2,8 @@
 -- AUTEL PROPAD V2 - HYBRID CLEAN + FAST + 360 SCAN
 --  - 360° SCAN detection
 --  - Full multi-car SONAR labels
+--  - Phone-style car selector (prev/next)
+--  - Arrows in bottom bar (no overlap)
 --  - Fixed EXIT reset
 --  - ScreenGui + SurfaceGui synced
 --========================================================--
@@ -95,7 +97,7 @@ mainPanel.Parent = tablet
 
 local mainText = Instance.new("TextLabel")
 mainText.Name = "MainText"
-mainText.Size = UDim2.new(1, -10, 1, -10)
+mainText.Size = UDim2.new(1, -10, 1, -50) -- leave space for bottom bar
 mainText.Position = UDim2.new(0, 5, 0, 5)
 mainText.BackgroundTransparency = 1
 mainText.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -106,6 +108,40 @@ mainText.TextXAlignment = Enum.TextXAlignment.Left
 mainText.TextYAlignment = Enum.TextYAlignment.Top
 mainText.Text = "Select a module on the left."
 mainText.Parent = mainPanel
+
+-- Bottom bar for arrows
+local arrowBar = Instance.new("Frame")
+arrowBar.Name = "ArrowBar"
+arrowBar.Size = UDim2.new(1, 0, 0, 40)
+arrowBar.Position = UDim2.new(0, 0, 1, -40)
+arrowBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+arrowBar.BorderSizePixel = 0
+arrowBar.Parent = mainPanel
+
+-- Phone-style scroll buttons (in bottom bar)
+local prevBtn = Instance.new("TextButton")
+prevBtn.Name = "PrevBtn"
+prevBtn.Size = UDim2.new(0, 60, 0, 30)
+prevBtn.Position = UDim2.new(0.25, -30, 0.5, -15)
+prevBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+prevBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+prevBtn.TextScaled = true
+prevBtn.Font = Enum.Font.SourceSansBold
+prevBtn.Text = "◀"
+prevBtn.Visible = false
+prevBtn.Parent = arrowBar
+
+local nextBtn = Instance.new("TextButton")
+nextBtn.Name = "NextBtn"
+nextBtn.Size = UDim2.new(0, 60, 0, 30)
+nextBtn.Position = UDim2.new(0.75, -30, 0.5, -15)
+nextBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+nextBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+nextBtn.TextScaled = true
+nextBtn.Font = Enum.Font.SourceSansBold
+nextBtn.Text = "▶"
+nextBtn.Visible = false
+nextBtn.Parent = arrowBar
 
 -- Bottom status bar
 local statusBar = Instance.new("Frame")
@@ -175,11 +211,11 @@ local setNav   = makeNavButton("SET",     4)
 local exitNav  = makeNavButton("EXIT",    5)
 
 --========================================================--
--- LINK STATUS (Connected / Unlinked)
+-- LINK STATUS
 --========================================================--
 
 local isLinked = false
-local surfaceTablet -- forward declaration
+local surfaceTablet
 
 local function updateLinkStatus()
     local text = isLinked and "Connected" or "Unlinked"
@@ -197,7 +233,7 @@ local function updateLinkStatus()
 end
 
 --========================================================--
--- SURFACE GUI SYNC (NO 3D MODEL)
+-- SURFACE GUI SYNC
 --========================================================--
 
 local virtualBody = Instance.new("Part")
@@ -473,43 +509,106 @@ local function spoofKey(car)
 end
 
 --========================================================--
+-- PHONE-STYLE SCAN STATE
+--========================================================--
+
+local scanList = {}
+local scanIndex = 1
+local prevConn, nextConn
+
+--========================================================--
 -- NAVIGATION LOGIC
 --========================================================--
 
--- 360° SCAN detection
+-- Phone-style 360° SCAN
 scanNav.MouseButton1Click:Connect(function()
     isLinked = false
     updateLinkStatus()
     clearAllSonarUI()
     highlightNav("SCAN")
 
-    local car = findCar({
-        useForward = false, -- 360° detection
-        maxDist = 60,
-    })
+    scanList = {}
+    scanIndex = 1
+    lastScannedCar = nil
 
-    if not car then
-        syncStatus("No car found", Color3.fromRGB(255, 0, 0))
-        syncMain("SCAN MODULE\n\nNo vehicle detected around you.")
-        return
-    end
-
-    ensureCarAttributes(car)
-    lastScannedCar = car
+    prevBtn.Visible = false
+    nextBtn.Visible = false
 
     local char = lp.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
-    local dist = (root and primary) and (primary.Position - root.Position).Magnitude or 0
-    local locked = car:GetAttribute("Locked")
+    if not root then
+        syncStatus("No character", Color3.fromRGB(255, 0, 0))
+        syncMain("SCAN MODULE\n\nCharacter not found.")
+        return
+    end
 
-    syncStatus("Target acquired: " .. car.Name, Color3.fromRGB(0, 255, 0))
-    syncMain(string.format(
-        "SCAN MODULE\n\nNearest Vehicle (360°):\nName: %s\nDistance: %d studs\nLocked: %s",
-        car.Name,
-        math.floor(dist),
-        tostring(locked)
-    ))
+    local seen = {}
+    for _, seat in ipairs(vehicleSeats) do
+        if seat.Parent then
+            local car = getTopmostModelFromSeat(seat)
+            if car and not seen[car] then
+                local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+                if primary then
+                    local dist = (primary.Position - root.Position).Magnitude
+                    if dist <= 60 then
+                        seen[car] = true
+                        table.insert(scanList, car)
+                    end
+                end
+            end
+        end
+    end
+
+    if #scanList == 0 then
+        syncStatus("No cars found", Color3.fromRGB(255, 0, 0))
+        syncMain("SCAN MODULE\n\nNo vehicles detected around you.")
+        return
+    end
+
+    local function showCar()
+        local car = scanList[scanIndex]
+        if not car or not car.Parent then
+            syncStatus("Car missing", Color3.fromRGB(255, 0, 0))
+            return
+        end
+
+        ensureCarAttributes(car)
+        lastScannedCar = car
+
+        local charNow = lp.Character
+        local rootNow = charNow and charNow:FindFirstChild("HumanoidRootPart")
+        local primary = car.PrimaryPart or car:FindFirstChildWhichIsA("BasePart", true)
+        local dist = (rootNow and primary) and (primary.Position - rootNow.Position).Magnitude or 0
+        local locked = car:GetAttribute("Locked")
+
+        syncStatus("Car " .. scanIndex .. " of " .. #scanList, Color3.fromRGB(0, 255, 0))
+        syncMain(string.format(
+            "SCAN MODULE (PHONE MODE)\n\nVehicle %d/%d\nName: %s\nDistance: %d studs\nLocked: %s",
+            scanIndex, #scanList, car.Name, math.floor(dist), tostring(locked)
+        ))
+
+        prevBtn.Visible = (#scanList > 1)
+        nextBtn.Visible = (#scanList > 1)
+    end
+
+    showCar()
+
+    if prevConn then prevConn:Disconnect() end
+    if nextConn then nextConn:Disconnect() end
+
+    prevConn = prevBtn.MouseButton1Click:Connect(function()
+        if scanIndex > 1 then
+            scanIndex -= 1
+            showCar()
+        end
+    end)
+
+    nextConn = nextBtn.MouseButton1Click:Connect(function()
+        if scanIndex < #scanList then
+            scanIndex += 1
+            showCar()
+        end
+    end)
 end)
 
 spoofNav.MouseButton1Click:Connect(function()
@@ -518,7 +617,7 @@ spoofNav.MouseButton1Click:Connect(function()
     clearAllSonarUI()
     highlightNav("SPOOF")
 
-    if not lastScannedCar then
+    if not lastScannedCar or not lastScannedCar.Parent then
         syncStatus("Scan a car first", Color3.fromRGB(255, 170, 0))
         syncMain("SPOOF MODULE\n\nNo vehicle selected.\nRun SCAN first.")
         return
@@ -534,6 +633,9 @@ sonarNav.MouseButton1Click:Connect(function()
     updateLinkStatus()
     clearAllSonarUI()
     highlightNav("SONAR")
+
+    prevBtn.Visible = false
+    nextBtn.Visible = false
 
     if #vehicleSeats == 0 then
         syncStatus("No cars found", Color3.fromRGB(255, 0, 0))
@@ -568,6 +670,9 @@ setNav.MouseButton1Click:Connect(function()
     clearAllSonarUI()
     highlightNav("SET")
 
+    prevBtn.Visible = false
+    nextBtn.Visible = false
+
     syncStatus("Settings open", Color3.fromRGB(0, 255, 0))
     syncMain("SETTINGS MODULE\n\nKeybind: T\nTheme: Ultra Clean\nSync: Enabled\n\nValues are static in this build.")
 end)
@@ -583,6 +688,11 @@ exitNav.MouseButton1Click:Connect(function()
 
     spoofedKeys = {}
     lastScannedCar = nil
+    scanList = {}
+    scanIndex = 1
+
+    prevBtn.Visible = false
+    nextBtn.Visible = false
 
     syncStatus("Closed", Color3.fromRGB(255, 170, 0))
     syncMain("Select a module on the left.")
@@ -604,10 +714,14 @@ local function toggleTablet()
         updateLinkStatus()
         clearAllSonarUI()
         highlightNav("NONE")
+        prevBtn.Visible = false
+        nextBtn.Visible = false
         syncStatus("Ready", Color3.fromRGB(0, 255, 0))
         syncMain("Select a module on the left.")
     else
         clearAllSonarUI()
+        prevBtn.Visible = false
+        nextBtn.Visible = false
     end
 end
 
