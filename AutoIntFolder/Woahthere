@@ -21,23 +21,14 @@ local function tween(obj, props, t)
     return TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
 end
 
-local function spectralFlicker(frame)
-    frame.BackgroundTransparency = 1
-    for i = 1,3 do
-        frame.BackgroundTransparency = 0.4
-        task.wait(0.03)
-        frame.BackgroundTransparency = 1
-        task.wait(0.03)
-    end
-    frame.BackgroundTransparency = 0.1
-end
-
+-- UI ROOT
 local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
 gui.Name = "AUTEL_PRO_SPECTRE"
 task.wait(0.25)
 
+-- COMPACT TAB
 local tab = Instance.new("Frame", gui)
 tab.Size = CFG.CompactSize
 tab.Position = CFG.CompactPos
@@ -51,6 +42,7 @@ stroke.Thickness = 2
 stroke.Color = CFG.Col
 stroke.Transparency = .15
 
+-- FULL UI
 local full = Instance.new("Frame", gui)
 full.Size = CFG.FullSize
 full.Position = CFG.FullPos
@@ -59,6 +51,7 @@ full.BackgroundColor3 = CFG.BG_Full
 full.BackgroundTransparency = 1
 full.Visible = false
 
+-- BACKGROUND GRID
 local grid = Instance.new("ImageLabel", full)
 grid.Size = UDim2.new(1,0,1,0)
 grid.BackgroundTransparency = 1
@@ -67,22 +60,9 @@ grid.ImageTransparency = 0.85
 grid.ScaleType = Enum.ScaleType.Tile
 grid.TileSize = UDim2.new(0,120,0,120)
 
--- RIGHT‑SIDE PANEL FOR LIST / CONTROLS
-local panel = Instance.new("Frame", full)
-panel.Size = UDim2.new(0.4,0,0.7,0)
-panel.Position = UDim2.new(0.55,0,0.2,0)
-panel.BackgroundTransparency = 1
-
-local scrollFrame = Instance.new("ScrollingFrame", panel)
-scrollFrame.Size = UDim2.new(1,0,1,0)
-scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
-scrollFrame.ScrollBarThickness = 6
-scrollFrame.BackgroundTransparency = 1
-scrollFrame.ScrollBarImageColor3 = CFG.Col
-
--- LEFT‑SIDE TEXT / STATUS
+-- LEFT TEXT REGION
 local titleLabel = Instance.new("TextLabel", full)
-titleLabel.Size = UDim2.new(0.5,0,0,60)
+titleLabel.Size = UDim2.new(0.48,0,0,60)
 titleLabel.Position = UDim2.new(0.03,0,0.03,0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Font = Enum.Font.GothamBold
@@ -93,21 +73,41 @@ titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Text = "<b>AUTEL//PRO — SPECTRE OPS SUITE</b>"
 
 local textLabel = Instance.new("TextLabel", full)
-textLabel.Size = UDim2.new(0.5,0,0.35,0)
-textLabel.Position = UDim2.new(0.03,0,0.18,0)
+textLabel.Size = UDim2.new(0.48,0,0.45,0)
+textLabel.Position = UDim2.new(0.03,0,0.12,0)
 textLabel.BackgroundTransparency = 1
 textLabel.Font = Enum.Font.Gotham
-textLabel.TextScaled = true
+textLabel.TextScaled = false
+textLabel.TextSize = 20
 textLabel.RichText = true
 textLabel.TextColor3 = Color3.fromRGB(230,230,235)
 textLabel.TextXAlignment = Enum.TextXAlignment.Left
 textLabel.TextYAlignment = Enum.TextYAlignment.Top
 textLabel.TextWrapped = true
+textLabel.TextTruncate = Enum.TextTruncate.AtEnd
 textLabel.Text = ""
 
+-- RIGHT SCROLL REGION
+local panel = Instance.new("Frame", full)
+panel.Size = UDim2.new(0.42,0,0.78,0)
+panel.Position = UDim2.new(0.55,0,0.12,0)
+panel.BackgroundTransparency = 1
+panel.ClipsDescendants = true
+
+local scrollFrame = Instance.new("ScrollingFrame", panel)
+scrollFrame.Size = UDim2.new(1,0,1,0)
+scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.ScrollBarImageColor3 = CFG.Col
+scrollFrame.ClipsDescendants = true
+
+-- BOTTOM STATUS BAR
 local status = Instance.new("TextLabel", full)
 status.Size = UDim2.new(0.4,0,0,30)
-status.Position = UDim2.new(0.03,0,0.9,0)
+status.Position = UDim2.new(0.03,0,0.88,0)
 status.BackgroundTransparency = 1
 status.Font = Enum.Font.Gotham
 status.TextScaled = true
@@ -118,7 +118,7 @@ status.Text = "Status: Idle"
 
 local progressLabel = Instance.new("TextLabel", full)
 progressLabel.Size = UDim2.new(0.4,0,0,30)
-progressLabel.Position = UDim2.new(0.55,0,0.9,0)
+progressLabel.Position = UDim2.new(0.55,0,0.88,0)
 progressLabel.BackgroundTransparency = 1
 progressLabel.Font = Enum.Font.Gotham
 progressLabel.TextScaled = true
@@ -127,13 +127,13 @@ progressLabel.TextColor3 = Color3.fromRGB(220,40,40)
 progressLabel.TextXAlignment = Enum.TextXAlignment.Right
 progressLabel.Text = ""
 
+-- EXPAND / COLLAPSE (NO FLICKER)
 local isFull = false
 
 local function expandToFull()
     if isFull then return end
     isFull = true
     full.Visible = true
-    spectralFlicker(full)
     tween(full,{BackgroundTransparency = 0.05},CFG.FadeTime):Play()
     tween(tab,{BackgroundTransparency = 1},CFG.FadeTime):Play()
     task.delay(CFG.FadeTime,function()
@@ -145,7 +145,6 @@ local function collapseToCompact()
     if not isFull then return end
     isFull = false
     tab.Visible = true
-    spectralFlicker(tab)
     tween(full,{BackgroundTransparency = 1},CFG.FadeTime):Play()
     tween(tab,{BackgroundTransparency = 0.15},CFG.FadeTime):Play()
     task.delay(CFG.FadeTime,function()
@@ -153,6 +152,7 @@ local function collapseToCompact()
     end)
 end
 
+-- DRAGGING
 local dragging = false
 local dragStart, startPos
 
@@ -180,21 +180,21 @@ uis.InputEnded:Connect(function(i)
     end
 end)
 
-_G.AUTELPRO_SPECTRE = _G.AUTELPRO_SPECTRE or {}
-_G.AUTELPRO_SPECTRE.tab = tab
-_G.AUTELPRO_SPECTRE.full = full
-_G.AUTELPRO_SPECTRE.isFull = function() return isFull end
-_G.AUTELPRO_SPECTRE.expandToFull = expandToFull
-_G.AUTELPRO_SPECTRE.collapseToCompact = collapseToCompact
+-- GLOBAL EXPORT
+_G.AUTELPRO_SPECTRE = {
+    tab = tab,
+    full = full,
+    expandToFull = expandToFull,
+    collapseToCompact = collapseToCompact,
+    isFull = function() return isFull end
+}
 
+-- CLEAR PANEL
 local function clearPanel()
-    for _,v in ipairs(panel:GetChildren()) do
-        if v:IsA("TextButton") then
+    for _,v in ipairs(scrollFrame:GetChildren()) do
+        if v:IsA("TextButton") or v:IsA("TextLabel") then
             v:Destroy()
         end
-    end
-    for _,v in ipairs(scrollFrame:GetChildren()) do
-        v:Destroy()
     end
 end
 
@@ -204,45 +204,43 @@ end
 
 local function moduleTransition(fn)
     clearPanel()
+    textLabel.Text = ""
     progressLabel.Text = ""
     fn()
 end
 
-_G.AUTELPRO_SPECTRE.panel = panel
-_G.AUTELPRO_SPECTRE.status = status
-_G.AUTELPRO_SPECTRE.progressLabel = progressLabel
-_G.AUTELPRO_SPECTRE.setText = setText
-_G.AUTELPRO_SPECTRE.moduleTransition = moduleTransition
-_G.AUTELPRO_SPECTRE.clearPanel = clearPanel
-
--- live vehicle seat database (infinite range, auto‑updating)
-local VehicleDB = {}
-local FILTER_OUT = {
-    Body = true,
-    Model = true,
-    Part = true,
+-- DISPLAY FILTER
+local DISPLAY_FILTER = {
+    ["PartyST"] = true,
+    ["FUTON"] = true,
+    ["Model"] = true,
+    ["Body"] = true,
+    ["Part"] = true,
+    ["Seat"] = true
 }
+
+local function getDisplayName(car, seat)
+    if DISPLAY_FILTER[car.Name] then
+        return seat.Name
+    end
+    return car.Name
+end
+
+-- LIVE VEHICLE DATABASE
+local VehicleDB = {}
 
 local function registerSeat(seat)
     if not (seat:IsA("VehicleSeat") or seat:IsA("Seat")) then return end
     local car = seat:FindFirstAncestorOfClass("Model") or seat
-    if FILTER_OUT[car.Name] then
-        VehicleDB[seat] = {
-            seat = seat,
-            car = seat
-        }
-        return
+    if DISPLAY_FILTER[car.Name] then
+        VehicleDB[seat] = {seat = seat, car = seat}
+    else
+        VehicleDB[seat] = {seat = seat, car = car}
     end
-    VehicleDB[seat] = {
-        seat = seat,
-        car = car
-    }
 end
 
 local function unregisterSeat(inst)
-    if VehicleDB[inst] then
-        VehicleDB[inst] = nil
-    end
+    if VehicleDB[inst] then VehicleDB[inst] = nil end
 end
 
 local function initialSeatScan()
@@ -275,26 +273,12 @@ local function buildVehicleList()
 
     for seat,info in pairs(VehicleDB) do
         if seat.Parent and info.car and info.car.Parent then
-            if FILTER_OUT[info.car.Name] then
-                local pos = seat.Position
-                table.insert(list, {
-                    car = seat,
-                    seat = seat,
-                    dist = (pos - rootPos).Magnitude
-                })
-            else
-                local pos
-                if info.car:IsA("Model") and info.car.PrimaryPart then
-                    pos = info.car.PrimaryPart.Position
-                else
-                    pos = seat.Position
-                end
-                table.insert(list, {
-                    car = info.car,
-                    seat = seat,
-                    dist = (pos - rootPos).Magnitude
-                })
-            end
+            local pos = (info.car.PrimaryPart and info.car.PrimaryPart.Position) or seat.Position
+            table.insert(list,{
+                car = info.car,
+                seat = seat,
+                dist = (pos - rootPos).Magnitude
+            })
         else
             VehicleDB[seat] = nil
         end
@@ -304,8 +288,7 @@ local function buildVehicleList()
     return list
 end
 
-_G.AUTELPRO_SPECTRE.buildVehicleList = buildVehicleList
-
+-- LAST TARGET
 local _lastTarget = nil
 
 local function setLastTarget(entry)
@@ -320,39 +303,34 @@ local function lastSeat()
     return _lastTarget and _lastTarget.seat or nil
 end
 
-_G.AUTELPRO_SPECTRE.lastCar = lastCar
-_G.AUTELPRO_SPECTRE.lastSeat = lastSeat
-_G.AUTELPRO_SPECTRE.setLastTarget = setLastTarget
-
--- MANUAL ACQUISITION: user selects from scrollable list on the right
+-- ACQUIRE (manual selection)
 local function ACQUIRE()
     moduleTransition(function()
         status.Text = "Status: ACQ // ACTIVE"
-        setText("<b>ACQUISITION SUITE</b>\n\nScan complete.\nSelect a vehicle from the list on the right to lock target.")
-        progressLabel.Text = ""
+        setText("<b>ACQUISITION SUITE</b>\n\nSelect a vehicle from the list on the right.")
 
         local list = buildVehicleList()
         if #list == 0 then
-            setText("<b>ACQUISITION SUITE</b>\n\nNo vehicles detected in AO.")
+            setText("<b>ACQUISITION SUITE</b>\n\nNo vehicles detected.")
             status.Text = "Status: ACQ // COLD"
             return
         end
 
-        local y = 0
-        for index,entry in ipairs(list) do
+        for _,entry in ipairs(list) do
             local car = entry.car
             local dist = math.floor(entry.dist)
+            local displayName = getDisplayName(car, entry.seat)
 
             local btn = Instance.new("TextButton", scrollFrame)
             btn.Size = UDim2.new(1,-20,0,32)
-            btn.Position = UDim2.new(0,10,0,y)
+            btn.Position = UDim2.new(0,10,0,scrollFrame.CanvasSize.Y.Offset)
             btn.BackgroundColor3 = Color3.fromRGB(15,15,22)
             btn.Font = Enum.Font.Gotham
             btn.TextScaled = true
             btn.RichText = true
             btn.TextColor3 = Color3.fromRGB(240,240,245)
             btn.TextXAlignment = Enum.TextXAlignment.Left
-            btn.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
+            btn.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", displayName, dist)
             Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
 
             btn.MouseEnter:Connect(function()
@@ -364,133 +342,86 @@ local function ACQUIRE()
 
             btn.MouseButton1Click:Connect(function()
                 setLastTarget(entry)
-                setText(("<b>ACQUISITION SUITE</b>\n\nTarget locked:\n%s\n\nRange: <font color='rgb(220,40,40)'>%d studs</font>"):format(car.Name, dist))
+                setText(("<b>ACQUISITION SUITE</b>\n\nTarget locked:\n%s\n\nRange: <font color='rgb(220,40,40)'>%d studs</font>")
+                    :format(displayName, dist))
                 status.Text = "Status: ACQ // LOCKED"
             end)
-
-            y += 36
         end
-
-        scrollFrame.CanvasSize = UDim2.new(0,0,0,y + 10)
     end)
 end
 
-_G.AUTELPRO_SPECTRE.ACQUIRE = ACQUIRE
-
--- RADAR‑STYLE SCAN (visual sweep + list, no auto‑lock)
-local function radarPulse()
-    progressLabel.Text = ""
-    for i = 1,12 do
-        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
-        task.wait(0.04)
-    end
-    for i = 12,1,-1 do
-        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
-        task.wait(0.03)
-    end
-end
-
+-- SCAN
 local function SCAN()
     moduleTransition(function()
         status.Text = "Status: SCAN // ACTIVE"
-        setText("<b>TACTICAL SCAN SUITE</b>\n\nInitializing spectral sweep...")
-        radarPulse()
+        setText("<b>TACTICAL SCAN SUITE</b>\n\nScanning...")
 
         local list = buildVehicleList()
         if #list == 0 then
-            setText("<b>TACTICAL SCAN SUITE</b>\n\nNo vehicle signatures detected.\nAO remains cold.")
+            setText("<b>TACTICAL SCAN SUITE</b>\n\nNo vehicles detected.")
             return
         end
 
-        setText("<b>TACTICAL SCAN SUITE</b>\n\nTargets detected (select in ACQ module to lock):")
-
-        local y = 0
         for _,entry in ipairs(list) do
             local car = entry.car
             local dist = math.floor(entry.dist)
+            local displayName = getDisplayName(car, entry.seat)
 
             local line = Instance.new("TextLabel", scrollFrame)
             line.Size = UDim2.new(1,-20,0,30)
-            line.Position = UDim2.new(0,10,0,y)
+            line.Position = UDim2.new(0,10,0,scrollFrame.CanvasSize.Y.Offset)
             line.BackgroundTransparency = 1
             line.Font = Enum.Font.Gotham
             line.TextScaled = true
             line.RichText = true
             line.TextColor3 = Color3.fromRGB(240,240,245)
             line.TextXAlignment = Enum.TextXAlignment.Left
-            line.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", car.Name, dist)
-
-            y += 34
+            line.Text = string.format("<b>%s</b> — <font color='rgb(220,40,40)'>%d studs</font>", displayName, dist)
         end
 
-        scrollFrame.CanvasSize = UDim2.new(0,0,0,y + 20)
         status.Text = "Status: SCAN // COMPLETE"
     end)
 end
 
-_G.AUTELPRO_SPECTRE.SCAN = SCAN
-
--- ECU stays in Message 1 so spoofing logic is close to DB
+-- ECU (NO SEAT STABILIZATION)
 local function ECU()
     moduleTransition(function()
         local car = lastCar()
         if not car or not car.Parent then
-            setText("<b>ECU OVERRIDE SUITE</b>\n\nNo target selected.\nUse ACQ to lock a vehicle first.")
+            setText("<b>ECU OVERRIDE SUITE</b>\n\nNo target selected.")
             status.Text = "Status: Idle"
             return
         end
+
         status.Text = "Status: ECU // NEGOTIATION"
-        setText(("<b>ECU OVERRIDE SUITE</b>\n\nVehicle: %s\n\nInitiating CAN handshake..."):format(car.Name))
-        task.wait(0.35)
-        setText("<b>ECU OVERRIDE SUITE</b>\n\nAuthenticating with BCM...\nRolling code sync in progress...")
-        task.wait(0.45)
-        setText("<b>ECU OVERRIDE SUITE</b>\n\nInjecting override frames...\n0x1A2 → 0x3F1")
+        setText("<b>ECU OVERRIDE SUITE</b>\n\nNegotiating with ECU...")
+
         task.wait(0.4)
-        setText("<b>ECU OVERRIDE SUITE</b>\n\nAwaiting ECU response...\nMonitoring bus traffic...")
-        task.wait(0.5)
+        setText("<b>ECU OVERRIDE SUITE</b>\n\nInjecting override frames...")
+        task.wait(0.4)
 
         for _,d in ipairs(car:GetDescendants()) do
-            if d:GetAttribute("EngineDisabled") ~= nil then
-                d:SetAttribute("EngineDisabled", false)
-            end
-            if d:GetAttribute("Immobilized") ~= nil then
-                d:SetAttribute("Immobilized", false)
-            end
-            if d:GetAttribute("SeatDisabled") ~= nil then
-                d:SetAttribute("SeatDisabled", false)
-            end
-        end
-
-        local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-        local seat = lastSeat()
-            or car:FindFirstChildWhichIsA("VehicleSeat", true)
-            or car:FindFirstChildWhichIsA("Seat", true)
-
-        if hum and seat then
-            hum.Sit = false
-            task.wait()
-            if seat:GetAttribute("SeatDisabled") ~= nil then
-                seat:SetAttribute("SeatDisabled", false)
-            end
-            hum.Sit = true
-            task.wait(0.1)
-            if hum.SeatPart ~= seat then
-                hum:ChangeState(Enum.HumanoidStateType.Seated)
-                hum.Sit = true
-            end
+            if d:GetAttribute("EngineDisabled") ~= nil then d:SetAttribute("EngineDisabled", false) end
+            if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
+            if d:GetAttribute("SeatDisabled") ~= nil then d:SetAttribute("SeatDisabled", false) end
         end
 
         progressLabel.Text = "<font color='rgb(255,60,60)'>▂▂▂▂▂▂▂▂▂▂</font>"
-        setText(("<b>ECU OVERRIDE SUITE</b>\n\nVehicle: %s\n\n<font color='rgb(0,255,0)'>BREACH COMPLETE</font>"):format(car.Name))
+        setText("<b>ECU OVERRIDE SUITE</b>\n\n<font color='rgb(0,255,0)'>BREACH COMPLETE</font>")
         status.Text = "Status: ECU // COMPLETE"
     end)
 end
 
+_G.AUTELPRO_SPECTRE.ACQUIRE = ACQUIRE
+_G.AUTELPRO_SPECTRE.SCAN = SCAN
 _G.AUTELPRO_SPECTRE.ECU = ECU
+_G.AUTELPRO_SPECTRE.lastCar = lastCar
+_G.AUTELPRO_SPECTRE.lastSeat = lastSeat
+_G.AUTELPRO_SPECTRE.setLastTarget = setLastTarget
 -- KEY SUITE (lock / unlock / flash)
 local function doLock(car)
     setText("<b>KEY SUITE</b>\n\nRolling code sync...")
-    rollingSync()
+    progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
     setText("<b>KEY SUITE</b>\n\n<font color='rgb(255,60,60)'>LOCKED</font>\n" .. car.Name)
     status.Text = "Status: LOCK // SPECTRE"
 
@@ -505,7 +436,7 @@ end
 
 local function doUnlock(car)
     setText("<b>KEY SUITE</b>\n\nRolling code sync...")
-    rollingSync()
+    progressLabel.Text = "▂▂▂▂▂▂▂▂▂▂"
     setText("<b>KEY SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCKED</font>\n" .. car.Name)
     status.Text = "Status: UNLOCK // SPECTRE"
 
@@ -549,9 +480,9 @@ local function KEY()
         setText("<b>KEY SUITE</b>\n\nSelect an action for:\n" .. car.Name)
 
         local function makeButton(label, callback)
-            local b = Instance.new("TextButton", panel)
-            b.Size = UDim2.new(1,-20,0,40)
-            b.Position = UDim2.new(0,10,0,260 + (#panel:GetChildren()*45))
+            local b = Instance.new("TextButton", full)
+            b.Size = UDim2.new(0,180,0,40)
+            b.Position = UDim2.new(0.03,0,0.55 + (#full:GetChildren()*0.07),0)
             b.BackgroundColor3 = Color3.fromRGB(15,15,22)
             b.Font = Enum.Font.GothamBold
             b.TextScaled = true
@@ -591,7 +522,7 @@ end
 
 _G.AUTELPRO_SPECTRE.EXIT = EXIT
 
--- BUTTON PANEL (left side)
+-- LEFT‑SIDE BUTTON PANEL
 local function makeButton(label, order, callback)
     local b = Instance.new("TextButton", full)
     b.Size = UDim2.new(0,180,0,40)
