@@ -1,1 +1,98 @@
-JUST A PLACEHOLDA
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+
+local lp = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+
+local locked = false
+local enemy = nil
+local holdingAlt = false
+
+local MAX_SCREEN_DIST = 200
+local CAMERA_SMOOTHNESS = 0.9
+local LEAD_TIME = 0.07
+
+local AIM_OFFSET = Vector3.new(0, 1.5, 0) -- 1.5 is an upward offset allowing you to aim for the head, decrease it to aim lower 0 is torso
+
+-- Find closest player to cursor
+local function getClosestPlayerToCursor()
+    local mousePos = UserInputService:GetMouseLocation()
+    local closest = nil
+    local closestDist = MAX_SCREEN_DIST
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= lp and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = plr.Character.HumanoidRootPart
+            local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
+
+            if onScreen then
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closest = plr.Character
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+-- Auto-unlock logic
+local function bindAutoUnlock(character)
+    if not character then return end
+
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.Died:Connect(function()
+            locked = false
+            enemy = nil
+        end)
+    end
+
+    character.ChildRemoved:Connect(function(child)
+        if child.Name == "HumanoidRootPart" then
+            locked = false
+            enemy = nil
+        end
+    end)
+end
+
+-- Detect holding Left Alt
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+
+    if input.KeyCode == Enum.KeyCode.LeftAlt then
+        holdingAlt = true
+
+        enemy = getClosestPlayerToCursor()
+        if enemy then
+            locked = true
+            bindAutoUnlock(enemy)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.LeftAlt then
+        holdingAlt = false
+        locked = false
+        enemy = nil
+    end
+end)
+
+-- Camera tracking
+RunService.RenderStepped:Connect(function(dt)
+    if holdingAlt and locked and enemy and enemy:FindFirstChild("HumanoidRootPart") then
+        local hrp = enemy.HumanoidRootPart
+
+        local predictedPos = hrp.Position + hrp.Velocity * LEAD_TIME + AIM_OFFSET
+
+        local targetCF = CFrame.new(cam.CFrame.Position, predictedPos)
+        cam.CFrame = cam.CFrame:Lerp(targetCF, CAMERA_SMOOTHNESS)
+    else
+        locked = false
+        enemy = nil
+    end
+end)
