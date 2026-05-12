@@ -451,7 +451,6 @@ local function REPROGRAM()
     for _, d in ipairs(lastCar:GetDescendants()) do
         if d:IsA("VehicleSeat") or d:IsA("Seat") then
             d.Disabled = false
-            d:Sit(nil)
         end
 
         if d:IsA("BasePart") then
@@ -747,6 +746,9 @@ local function openTablet()
 end
 
 local function closeTablet()
+disconnectConn(liveUpdater)
+disconnectConn(listUpdater)
+disconnectConn(progressUpdater)
     tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
     task.delay(.25, function()
         tab.Visible = false
