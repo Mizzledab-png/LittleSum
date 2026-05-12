@@ -1,5 +1,6 @@
 -------------------------
--- SECTION 1: UTILITIES
+-- AUTEL//PRO SPECTRE
+-- SECTION 1: UTILITIES + CORE CONFIG
 -------------------------
 
 local plr = game.Players.LocalPlayer
@@ -8,26 +9,427 @@ local ts = game.TweenService
 local rs = game:GetService("RunService")
 
 local CFG = {
-    Size = UDim2.new(0,380,0,260),
-    Pos = UDim2.new(.5,0,.55,0),
+    CompactSize = UDim2.new(0,380,0,260),
+    CompactPos  = UDim2.new(.5,0,.55,0),
+
+    FullSize    = UDim2.new(1,0,1,0),
+    FullPos     = UDim2.new(0,0,0,0),
+
     Key = Enum.KeyCode.T,
     Cmd = "!autel",
-    Col = Color3.fromRGB(220,40,40), -- tactical red
-    BG = Color3.fromRGB(5,5,8),
-    Panel = Color3.fromRGB(12,12,18),
-    UseMobileButton = true
+
+    Col = Color3.fromRGB(220,40,40), -- spectral red
+    BG_Compact = Color3.fromRGB(5,5,8),
+    BG_Full    = Color3.fromRGB(0,0,0),
+
+    FadeTime = .25,
+    FlickerTime = .15,
 }
 
+-- Tween helper
 local function tween(o,p,t)
     return ts:Create(o, TweenInfo.new(t or .25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), p)
 end
 
+-- Spectral flicker (SPECTRE signature)
+local function spectralFlicker(obj)
+    obj.BackgroundTransparency = 1
+    tween(obj,{BackgroundTransparency=.4},CFG.FlickerTime):Play()
+    task.wait(CFG.FlickerTime)
+    tween(obj,{BackgroundTransparency=0},CFG.FlickerTime):Play()
+end
+
+-- Progress bar (red spectral)
+local function getProgressBar(pct)
+    local filled = math.floor(pct/10)
+    local empty = 10 - filled
+    local bar = ""
+
+    for _ = 1,filled do
+        bar = bar .. "<font color='rgb(220,40,40)'>▂</font>"
+    end
+    for _ = 1,empty do
+        bar = bar .. "<font color='rgb(60,60,60)'>▂</font>"
+    end
+
+    return bar
+end
+
+-- Root helper
+local function root()
+    local c = plr.Character or plr.CharacterAdded:Wait()
+    return c:WaitForChild("HumanoidRootPart")
+end
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 2: GUI + HYBRID ENGINE
+-------------------------
+
+local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+gui.Name = "AUTEL_PRO_SPECTRE"
+
+-----------------------------------------------------
+-- COMPACT TABLET (closed state)
+-----------------------------------------------------
+local tab = Instance.new("Frame", gui)
+tab.Size = CFG.CompactSize
+tab.Position = CFG.CompactPos
+tab.AnchorPoint = Vector2.new(.5,.5)
+tab.BackgroundColor3 = CFG.BG_Compact
+tab.BackgroundTransparency = 0.15
+tab.Visible = false
+
+Instance.new("UICorner", tab).CornerRadius = UDim.new(0,16)
+
+local stroke = Instance.new("UIStroke", tab)
+stroke.Thickness = 2
+stroke.Color = CFG.Col
+stroke.Transparency = .15
+
+-----------------------------------------------------
+-- FULL-SCREEN COMMAND MODE (expanded state)
+-----------------------------------------------------
+local full = Instance.new("Frame", gui)
+full.Size = CFG.FullSize
+full.Position = CFG.FullPos
+full.BackgroundColor3 = CFG.BG_Full
+full.BackgroundTransparency = 1     -- starts transparent
+full.Visible = false
+
+-- Tactical grid overlay (SPECTRE signature)
+local grid = Instance.new("ImageLabel", full)
+grid.Size = UDim2.new(1,0,1,0)
+grid.BackgroundTransparency = 1
+grid.Image = "rbxassetid://9152716921" -- faint grid texture
+grid.ImageTransparency = 0.85
+grid.ScaleType = Enum.ScaleType.Tile
+grid.TileSize = UDim2.new(0,120,0,120)
+
+-----------------------------------------------------
+-- HYBRID MODE ENGINE
+-----------------------------------------------------
+local isFull = false
+
+local function expandToFull()
+    if isFull then return end
+    isFull = true
+
+    full.Visible = true
+    spectralFlicker(full)
+
+    -- fade in full-screen
+    tween(full, {BackgroundTransparency = 0.05}, CFG.FadeTime):Play()
+    tween(tab, {BackgroundTransparency = 1}, CFG.FadeTime):Play()
+
+    task.delay(CFG.FadeTime, function()
+        tab.Visible = false
+    end)
+end
+
+local function collapseToCompact()
+    if not isFull then return end
+    isFull = false
+
+    tab.Visible = true
+    spectralFlicker(tab)
+
+    tween(full, {BackgroundTransparency = 1}, CFG.FadeTime):Play()
+    tween(tab, {BackgroundTransparency = 0.15}, CFG.FadeTime):Play()
+
+    task.delay(CFG.FadeTime, function()
+        full.Visible = false
+    end)
+end
+
+-----------------------------------------------------
+-- DRAGGING (compact mode only)
+-----------------------------------------------------
+local dragging = false
+local dragStart, startPos
+
+tab.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 and not isFull then
+        dragging = true
+        dragStart = i.Position
+        startPos = tab.Position
+    end
+end)
+
+tab.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = i.Position - dragStart
+        tab.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+uis.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 3: VEHICLE REGISTRY + TARGET TRACKING
+-------------------------
+
+local VM = {cars = {}, primary = {}}
+local lastCar = nil
+
+-----------------------------------------------------
+-- PRIMARY PART ASSIGNMENT (SPECTRE SILENT LOGIC)
+-----------------------------------------------------
+local function assignPrimaryPart(model)
+    if model.PrimaryPart then return model.PrimaryPart end
+
+    for _, p in ipairs(model:GetDescendants()) do
+        if p:IsA("BasePart") then
+            model.PrimaryPart = p
+            return p
+        end
+    end
+
+    return nil
+end
+
+-----------------------------------------------------
+-- VALID CAR NAME CHECK
+-----------------------------------------------------
 local function isValidCarName(name)
     if not name then return false end
     name = name:lower()
     return name ~= "body" and name ~= "model" and name ~= "futon"
 end
 
+-----------------------------------------------------
+-- REGISTER MODEL INTO VEHICLE MATRIX
+-----------------------------------------------------
+local function registerModel(model)
+    if not model:IsA("Model") then return end
+    if not isValidCarName(model.Name) then return end
+
+    local seat = model:FindFirstChildWhichIsA("VehicleSeat", true)
+    if not seat then return end
+
+    local pp = assignPrimaryPart(model)
+    if not pp then return end
+
+    if not VM.primary[model] then
+        VM.primary[model] = pp
+        table.insert(VM.cars, model)
+    end
+end
+
+-----------------------------------------------------
+-- AUTO-REGISTER EXISTING VEHICLES
+-----------------------------------------------------
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("VehicleSeat") then
+        local m = obj:FindFirstAncestorWhichIsA("Model")
+        if m then registerModel(m) end
+    end
+end
+
+-----------------------------------------------------
+-- REGISTER NEW VEHICLES AS THEY SPAWN
+-----------------------------------------------------
+workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("VehicleSeat") then
+        local m = obj:FindFirstAncestorWhichIsA("Model")
+        if m then registerModel(m) end
+    end
+end)
+
+-----------------------------------------------------
+-- CLEANUP WHEN VEHICLES DESPAWN
+-----------------------------------------------------
+workspace.ChildRemoved:Connect(function(model)
+    if VM.primary[model] then
+        VM.primary[model] = nil
+
+        for i, v in ipairs(VM.cars) do
+            if v == model then
+                table.remove(VM.cars, i)
+                break
+            end
+        end
+    end
+
+    if lastCar == model then
+        lastCar = nil
+    end
+end)
+
+-----------------------------------------------------
+-- BUILD SORTED VEHICLE LIST (SPECTRE SILENT SCAN)
+-----------------------------------------------------
+local function buildVehicleList()
+    local ok, r = pcall(root)
+    if not ok or not r or not r.Parent then return {} end
+
+    local list = {}
+
+    for _, m in ipairs(VM.cars) do
+        local p = VM.primary[m]
+        if p and m.Parent then
+            local dist = (p.Position - r.Position).Magnitude
+            table.insert(list, {car = m, dist = dist})
+        end
+    end
+
+    table.sort(list, function(a,b)
+        return a.dist < b.dist
+    end)
+
+    return list
+end
+
+-- Expose for other modules
+_G.AUTELPRO_SPECTRE = _G.AUTELPRO_SPECTRE or {}
+_G.AUTELPRO_SPECTRE.buildVehicleList = buildVehicleList
+_G.AUTELPRO_SPECTRE.VM = VM
+_G.AUTELPRO_SPECTRE.lastCar = function() return lastCar end
+_G.AUTELPRO_SPECTRE.setLastCar = function(c) lastCar = c end
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 4: COMMAND UI + TEXT ENGINE
+-------------------------
+
+-----------------------------------------------------
+-- FULL-SCREEN COMMAND PANEL
+-----------------------------------------------------
+local panel = Instance.new("Frame", full)
+panel.Size = UDim2.new(1, -200, 1, -120)
+panel.Position = UDim2.new(0, 100, 0, 80)
+panel.BackgroundTransparency = 1
+
+local panelCorner = Instance.new("UICorner", panel)
+panelCorner.CornerRadius = UDim.new(0, 12)
+
+-----------------------------------------------------
+-- TITLE BAR (SPECTRE STYLE)
+-----------------------------------------------------
+local title = Instance.new("TextLabel", full)
+title.Size = UDim2.new(1, 0, 0, 60)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextScaled = true
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextXAlignment = Enum.TextXAlignment.Center
+title.Text = "AUTEL//PRO  —  SPECTRE OPS SUITE"
+
+-----------------------------------------------------
+-- STATUS BAR (BOTTOM LEFT)
+-----------------------------------------------------
+local status = Instance.new("TextLabel", full)
+status.Size = UDim2.new(0, 400, 0, 40)
+status.Position = UDim2.new(0, 20, 1, -50)
+status.BackgroundTransparency = 1
+status.Font = Enum.Font.Gotham
+status.TextScaled = true
+status.TextColor3 = Color3.fromRGB(200, 200, 200)
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Text = "Status: Idle"
+
+-----------------------------------------------------
+-- TEXT OUTPUT (MAIN MODULE READOUT)
+-----------------------------------------------------
+local txt = Instance.new("TextLabel", panel)
+txt.Size = UDim2.new(1, -20, 0, 200)
+txt.Position = UDim2.new(0, 10, 0, 10)
+txt.BackgroundTransparency = 1
+txt.Font = Enum.Font.Gotham
+txt.TextColor3 = Color3.fromRGB(240, 240, 245)
+txt.TextWrapped = true
+txt.TextScaled = true
+txt.RichText = true
+txt.TextXAlignment = Enum.TextXAlignment.Left
+txt.TextYAlignment = Enum.TextYAlignment.Top
+txt.Text = "SYSTEM ONLINE\n\nSelect a module."
+
+-----------------------------------------------------
+-- PROGRESS LABEL (UNDER TEXT)
+-----------------------------------------------------
+local progressLabel = Instance.new("TextLabel", panel)
+progressLabel.Size = UDim2.new(1, -20, 0, 40)
+progressLabel.Position = UDim2.new(0, 10, 0, 220)
+progressLabel.BackgroundTransparency = 1
+progressLabel.Font = Enum.Font.Gotham
+progressLabel.TextScaled = true
+progressLabel.RichText = true
+progressLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+progressLabel.TextXAlignment = Enum.TextXAlignment.Left
+progressLabel.Text = ""
+
+-----------------------------------------------------
+-- SPECTRE TEXT ENGINE (smooth fade updates)
+-----------------------------------------------------
+local function setText(newText)
+    tween(txt, {TextTransparency = 1}, 0.12):Play()
+    task.wait(0.13)
+    txt.Text = newText
+    tween(txt, {TextTransparency = 0}, 0.15):Play()
+end
+
+-----------------------------------------------------
+-- CLEAR PANEL (used by modules)
+-----------------------------------------------------
+local function clearPanel()
+    setText(" ")
+    progressLabel.Text = ""
+
+    for _, v in ipairs(panel:GetChildren()) do
+        if v:IsA("TextButton") then
+            v:Destroy()
+        end
+    end
+end
+
+-----------------------------------------------------
+-- MODULE TRANSITION (compact → full-screen)
+-----------------------------------------------------
+local function moduleTransition(callback)
+    expandToFull()
+
+    tween(txt, {TextTransparency = 1}, 0.15):Play()
+    tween(progressLabel, {TextTransparency = 1}, 0.15):Play()
+
+    task.wait(0.16)
+    clearPanel()
+
+    callback()
+
+    tween(txt, {TextTransparency = 0}, 0.15):Play()
+    tween(progressLabel, {TextTransparency = 0}, 0.15):Play()
+end
+
+-- Expose for other modules
+_G.AUTELPRO_SPECTRE.setText = setText
+_G.AUTELPRO_SPECTRE.clearPanel = clearPanel
+_G.AUTELPRO_SPECTRE.moduleTransition = moduleTransition
+_G.AUTELPRO_SPECTRE.status = status
+_G.AUTELPRO_SPECTRE.progressLabel = progressLabel
+_G.AUTELPRO_SPECTRE.panel = panel
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 5: ACQUISITION MODULE
+-------------------------
+
+local buildVehicleList = _G.AUTELPRO_SPECTRE.buildVehicleList
+local setLastCar = _G.AUTELPRO_SPECTRE.setLastCar
+local status = _G.AUTELPRO_SPECTRE.status
+local setText = _G.AUTELPRO_SPECTRE.setText
+local moduleTransition = _G.AUTELPRO_SPECTRE.moduleTransition
+local panel = _G.AUTELPRO_SPECTRE.panel
+
+-----------------------------------------------------
+-- SIGNAL BAR (SPECTRE STYLE)
+-----------------------------------------------------
 local function getSignalBars(dist)
     if dist <= 30 then
         return "<font color='rgb(0,255,0)'>▂▃▅</font>"
@@ -40,452 +442,144 @@ local function getSignalBars(dist)
     end
 end
 
-local function getProgressBar(pct)
-    local filled = math.floor(pct/10)
-    local empty = 10 - filled
-    local bar = ""
-    for _ = 1,filled do
-        bar = bar .. "<font color='rgb(220,40,40)'>▂</font>"
-    end
-    for _ = 1,empty do
-        bar = bar .. "<font color='rgb(60,60,60)'>▂</font>"
-    end
-    return bar
-end
-
-local function root()
-    local c = plr.Character or plr.CharacterAdded:Wait()
-    return c:WaitForChild("HumanoidRootPart")
-end
-
--------------------------------
--- SECTION 2: VEHICLE REGISTRY
--------------------------------
-
-local VM = {cars = {}, primary = {}}
-local lastCar = nil
-
-local function assignPrimaryPart(m)
-    if m.PrimaryPart then return m.PrimaryPart end
-    for _,p in ipairs(m:GetDescendants()) do
-        if p:IsA("BasePart") then
-            m.PrimaryPart = p
-            return p
-        end
-    end
-    return nil
-end
-
-local function registerModel(m)
-    if not m:IsA("Model") then return end
-    if not isValidCarName(m.Name) then return end
-
-    local seat = m:FindFirstChildWhichIsA("VehicleSeat", true)
-    if not seat then return end
-
-    local pp = assignPrimaryPart(m)
-    if not pp then return end
-
-    if not VM.primary[m] then
-        VM.primary[m] = pp
-        table.insert(VM.cars, m)
-    end
-end
-
-workspace.ChildRemoved:Connect(function(m)
-    if VM.primary[m] then
-        VM.primary[m] = nil
-        for i,v in ipairs(VM.cars) do
-            if v == m then
-                table.remove(VM.cars, i)
-                break
-            end
-        end
-    end
-
-    if lastCar == m then
-        lastCar = nil
-        if status then status.Text = "Status: Idle" end
-        if setText then setText("TARGET LOST\n\nSelect new vehicle.") end
-    end
-end)
-
-workspace.DescendantAdded:Connect(function(o)
-    if o:IsA("VehicleSeat") then
-        local m = o:FindFirstAncestorWhichIsA("Model")
-        if m then registerModel(m) end
-    end
-end)
-
-for _,o in ipairs(workspace:GetDescendants()) do
-    if o:IsA("VehicleSeat") then
-        local m = o:FindFirstAncestorWhichIsA("Model")
-        if m then registerModel(m) end
-    end
-end
-
--------------------------------------
--- SECTION 3: GUI FRAMEWORK
--------------------------------------
-
-local gui = Instance.new("ScreenGui", plr:WaitForChild("PlayerGui"))
-gui.IgnoreGuiInset = true
-gui.ResetOnSpawn = false
-
-local tab = Instance.new("Frame", gui)
-tab.Size = CFG.Size
-tab.Position = CFG.Pos
-tab.AnchorPoint = Vector2.new(.5,.5)
-tab.BackgroundColor3 = CFG.BG
-tab.Visible = false
-Instance.new("UICorner", tab).CornerRadius = UDim.new(0,16)
-
-local st = Instance.new("UIStroke", tab)
-st.Thickness = 2
-st.Color = CFG.Col
-st.Transparency = .15
-
-local drag, ds, sp
-tab.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        drag = true
-        ds = i.Position
-        sp = tab.Position
-    end
-end)
-
-tab.InputChanged:Connect(function(i)
-    if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - ds
-        tab.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-    end
-end)
-
-uis.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        drag = false
-    end
-end)
-
-local main = Instance.new("Frame", tab)
-main.Size = UDim2.new(1,-20,1,-20)
-main.Position = UDim2.new(0,10,0,10)
-main.BackgroundTransparency = 1
-
-local title = Instance.new("TextLabel", main)
-title.Size = UDim2.new(1,0,0,26)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.TextColor3 = Color3.new(1,1,1)
-title.TextScaled = true
-title.Text = "AUTEL PROPAD // BLACK-OPS"
-
-local acc = Instance.new("Frame", main)
-acc.Size = UDim2.new(1,0,0,2)
-acc.Position = UDim2.new(0,0,0,28)
-acc.BackgroundColor3 = CFG.Col
-
-local nav = Instance.new("Frame", main)
-nav.Size = UDim2.new(0,110,1,-36)
-nav.Position = UDim2.new(0,0,0,34)
-nav.BackgroundTransparency = 1
-
-local panel = Instance.new("Frame", main)
-panel.Size = UDim2.new(1,-120,1,-36)
-panel.Position = UDim2.new(0,120,0,34)
-panel.BackgroundColor3 = CFG.Panel
-panel.BackgroundTransparency = 0
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0,10)
-
-local txt = Instance.new("TextLabel", panel)
-txt.Size = UDim2.new(1,-16,0,110)
-txt.Position = UDim2.new(0,8,0,8)
-txt.BackgroundTransparency = 1
-txt.Font = Enum.Font.Gotham
-txt.TextColor3 = Color3.fromRGB(240,240,245)
-txt.TextWrapped = true
-txt.TextScaled = true
-txt.RichText = true
-txt.TextXAlignment = Enum.TextXAlignment.Left
-txt.TextYAlignment = Enum.TextYAlignment.Top
-txt.Text = "SYSTEM ONLINE\n\nSelect a module on the left."
-
-local function setText(t)
-    tween(txt,{TextTransparency=1},.1):Play()
-    task.delay(.11,function()
-        txt.Text = t
-        tween(txt,{TextTransparency=0},.15):Play()
-    end)
-end
-
-local progressLabel = Instance.new("TextLabel", panel)
-progressLabel.Size = UDim2.new(1,-16,0,30)
-progressLabel.Position = UDim2.new(0,8,0,130)
-progressLabel.BackgroundTransparency = 1
-progressLabel.Font = Enum.Font.Gotham
-progressLabel.TextScaled = true
-progressLabel.RichText = true
-progressLabel.TextColor3 = Color3.fromRGB(255,255,255)
-progressLabel.TextXAlignment = Enum.TextXAlignment.Left
-progressLabel.Text = ""
-
-local status = Instance.new("TextLabel", nav)
-status.Size = UDim2.new(1,0,0,20)
-status.Position = UDim2.new(0,0,0,(5*34)+6)
-status.BackgroundTransparency = 1
-status.Font = Enum.Font.Gotham
-status.TextScaled = true
-status.TextColor3 = Color3.fromRGB(200,200,200)
-status.TextXAlignment = Enum.TextXAlignment.Left
-status.Text = "Status: Idle"
-
-local sonarList = Instance.new("ScrollingFrame", panel)
-sonarList.Size = UDim2.new(1,-16,1,-160)
-sonarList.Position = UDim2.new(0,8,0,120)
-sonarList.BackgroundTransparency = 1
-sonarList.BorderSizePixel = 0
-sonarList.CanvasSize = UDim2.new(0,0,0,0)
-sonarList.ScrollBarThickness = 4
-sonarList.Visible = false
-
-local listLayout = Instance.new("UIListLayout", sonarList)
-listLayout.Padding = UDim.new(0,4)
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
--------------------------------------
--- SECTION 4: CORE MODULES / HELPERS
--------------------------------------
-
-local activeBillboard = nil
-local liveUpdater = nil
-local listUpdater = nil
-local progressUpdater = nil
-
-local function disconnectConn(c)
-    if c then c:Disconnect() end
-end
-
-local function clearSonarUI()
-    sonarList.Visible = false
-    sonarList.CanvasSize = UDim2.new(0,0,0,0)
-
-    for _,v in ipairs(sonarList:GetChildren()) do
-        if v:IsA("TextButton") then
-            v:Destroy()
-        end
-    end
-
-    if activeBillboard then
-        activeBillboard:Destroy()
-        activeBillboard = nil
-    end
-
-    disconnectConn(liveUpdater)
-    disconnectConn(listUpdater)
-    disconnectConn(progressUpdater)
-
-    liveUpdater = nil
-    listUpdater = nil
-    progressUpdater = nil
-
-    progressLabel.Text = ""
-end
-
-local function clearPanel()
-    setText(" ")
-    progressLabel.Text = ""
-
-    for _,v in ipairs(panel:GetChildren()) do
-        if v:IsA("TextButton") then
-            v:Destroy()
-        end
-    end
-
-    clearSonarUI()
-end
-
-local function moduleTransition(callback)
-    tween(panel, {BackgroundTransparency = 1}, .15):Play()
-    tween(txt, {TextTransparency = 1}, .15):Play()
-    tween(progressLabel, {TextTransparency = 1}, .15):Play()
-
-    task.wait(.16)
-
-    clearPanel()
-    callback()
-
-    tween(panel, {BackgroundTransparency = 0}, .15):Play()
-    tween(txt, {TextTransparency = 0}, .15):Play()
-    tween(progressLabel, {TextTransparency = 0}, .15):Play()
-end
-
-local function showTargetUI(car)
-    if activeBillboard then activeBillboard:Destroy() end
-    disconnectConn(liveUpdater)
-    disconnectConn(progressUpdater)
-    progressLabel.Text = ""
-
-    local p = VM.primary[car]
-    if not p then return end
-
-    local pct = 0
-    progressUpdater = rs.Heartbeat:Connect(function()
-        if pct < 100 then
-            pct = math.min(pct + 2, 100)
-            progressLabel.Text = getProgressBar(pct)
-        else
-            progressLabel.Text = "<font color='rgb(0,255,0)'>BREACH COMPLETE</font>"
-            disconnectConn(progressUpdater)
-            progressUpdater = nil
-
-            local bb = Instance.new("BillboardGui")
-            bb.Size = UDim2.new(0,150,0,45)
-            bb.AlwaysOnTop = true
-            bb.Adornee = p
-            bb.Parent = car
-            activeBillboard = bb
-
-            local lb = Instance.new("TextLabel", bb)
-            lb.Size = UDim2.new(1,0,1,0)
-            lb.BackgroundTransparency = 1
-            lb.Font = Enum.Font.GothamBold
-            lb.TextScaled = true
-            lb.TextColor3 = Color3.fromRGB(255,60,60)
-
-            liveUpdater = rs.Heartbeat:Connect(function()
-                if not car.Parent then
-                    lb.Text = "TARGET LOST"
-                    return
-                end
-
-                local ok, r = pcall(root)
-                if not ok or not r or not r.Parent then
-                    lb.Text = car.Name .. "\nN/A"
-                    return
-                end
-
-                local d = math.floor((p.Position - r.Position).Magnitude)
-                lb.Text = ("%s\n%d studs"):format(car.Name, d)
-            end)
-        end
-    end)
-end
-
-local function buildVehicleList()
-    local ok, r = pcall(root)
-    if not ok or not r or not r.Parent then return {} end
-
-    local list = {}
-    for _,m in ipairs(VM.cars) do
-        local p = VM.primary[m]
-        if p and m.Parent then
-            local d = (p.Position - r.Position).Magnitude
-            table.insert(list, {car = m, dist = d})
-        end
-    end
-
-    table.sort(list, function(a,b)
-        return a.dist < b.dist
-    end)
-
-    return list
-end
-
--------------------------------------------------
--- CONNECTIONS MODULE (VEHICLE ACQUISITION)
--------------------------------------------------
-
-local function CONNECTIONS()
+-----------------------------------------------------
+-- ACQUISITION MODULE
+-----------------------------------------------------
+local function ACQUIRE()
     moduleTransition(function()
-        status.Text = "Status: Acquisition"
+        status.Text = "Status: ACQ // SPECTRE SWEEP"
 
         local list = buildVehicleList()
         if #list == 0 then
-            setText("<b>VEHICLE ACQUISITION MODE</b>\n\nNo targets detected in AO.")
+            setText("<b>ACQUISITION SUITE</b>\n\nNo vehicle signatures detected.\nAO is cold.")
             return
         end
 
-        setText("<b>VEHICLE ACQUISITION MODE</b>\n\nSelect target from list below.")
-        sonarList.Visible = true
+        setText("<b>ACQUISITION SUITE</b>\n\nSpectral sweep complete.\nSelect target from list.")
 
-        local buttons = {}
+        -----------------------------------------------------
+        -- SCROLLING LIST OF TARGETS
+        -----------------------------------------------------
+        local scroll = Instance.new("ScrollingFrame", panel)
+        scroll.Size = UDim2.new(1, -20, 1, -260)
+        scroll.Position = UDim2.new(0, 10, 0, 260)
+        scroll.BackgroundTransparency = 1
+        scroll.CanvasSize = UDim2.new(0, 0, 0, #list * 34)
+        scroll.ScrollBarThickness = 4
 
-        for _,e in ipairs(list) do
-            local b = Instance.new("TextButton", sonarList)
-            b.Size = UDim2.new(1,0,0,22)
-            b.BackgroundTransparency = 1
-            b.TextColor3 = Color3.new(1,1,1)
-            b.Font = Enum.Font.Gotham
-            b.TextSize = 14
+        local layout = Instance.new("UIListLayout", scroll)
+        layout.Padding = UDim.new(0, 6)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        -----------------------------------------------------
+        -- CREATE BUTTONS FOR EACH VEHICLE
+        -----------------------------------------------------
+        for _, entry in ipairs(list) do
+            local car = entry.car
+            local dist = math.floor(entry.dist)
+
+            local b = Instance.new("TextButton", scroll)
+            b.Size = UDim2.new(1, 0, 0, 30)
+            b.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+            b.Font = Enum.Font.GothamBold
+            b.TextScaled = true
             b.RichText = true
+            b.TextColor3 = Color3.fromRGB(240, 240, 245)
             b.TextXAlignment = Enum.TextXAlignment.Left
+            b.Text = string.format("<b>%s</b>  %s  (%d studs)", car.Name, getSignalBars(dist), dist)
 
-            b.Text = string.format("%s  %s  (%d studs)",
-                e.car.Name,
-                getSignalBars(e.dist),
-                math.floor(e.dist)
-            )
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
 
-            buttons[e.car] = b
+            b.MouseEnter:Connect(function()
+                tween(b, {BackgroundColor3 = CFG.Col}, 0.15):Play()
+            end)
 
+            b.MouseLeave:Connect(function()
+                tween(b, {BackgroundColor3 = Color3.fromRGB(15,15,22)}, 0.15):Play()
+            end)
+
+            -----------------------------------------------------
+            -- LOCK-ON LOGIC
+            -----------------------------------------------------
             b.MouseButton1Click:Connect(function()
-                lastCar = e.car
-                clearSonarUI()
-                setText(("<b>TARGET LOCKED</b>\n\n%s\n\nReprogram sequence ready.")
-                    :format(e.car.Name))
-                status.Text = "Status: Target Locked"
-                showTargetUI(e.car)
+                setLastCar(car)
+
+                setText(("<b>TARGET LOCKED</b>\n\n%s\n\n<font color='rgb(255,60,60)'>BREACH CHANNEL OPEN</font>")
+                    :format(car.Name))
+
+                status.Text = "Status: LOCKED // SPECTRE"
+
+                -----------------------------------------------------
+                -- BREACH INDICATOR (SPECTRE PULSE)
+                -----------------------------------------------------
+                local pulse = Instance.new("Frame", panel)
+                pulse.Size = UDim2.new(1, 0, 0, 6)
+                pulse.Position = UDim2.new(0, 0, 0, 240)
+                pulse.BackgroundColor3 = CFG.Col
+                pulse.BackgroundTransparency = 0.4
+
+                tween(pulse, {BackgroundTransparency = 1}, 0.4):Play()
+                task.delay(0.45, function() pulse:Destroy() end)
             end)
         end
-
-        sonarList.CanvasSize = UDim2.new(0,0,0,#list * 26)
-
-        disconnectConn(listUpdater)
-        listUpdater = rs.Heartbeat:Connect(function()
-            local ok, r = pcall(root)
-            if not ok or not r or not r.Parent then return end
-
-            for car,button in pairs(buttons) do
-                if car and car.Parent then
-                    local p = VM.primary[car]
-                    if p then
-                        local d = math.floor((p.Position - r.Position).Magnitude)
-                        button.Text = string.format("%s  %s  (%d studs)",
-                            car.Name,
-                            getSignalBars(d),
-                            d
-                        )
-                    end
-                else
-                    button.Text = (car and car.Name or "Unknown") .. " (lost)"
-                end
-            end
-        end)
     end)
 end
 
--------------------------------------------------
--- REPROGRAM MODULE (ECU OVERRIDE)
--------------------------------------------------
+-- Expose module
+_G.AUTELPRO_SPECTRE.ACQUIRE = ACQUIRE
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 6: ECU OVERRIDE MODULE (WITH SEAT STABILIZER)
+-------------------------
 
-local function REPROGRAM()
+local VM = _G.AUTELPRO_SPECTRE.VM
+local setText = _G.AUTELPRO_SPECTRE.setText
+local moduleTransition = _G.AUTELPRO_SPECTRE.moduleTransition
+local status = _G.AUTELPRO_SPECTRE.status
+local progressLabel = _G.AUTELPRO_SPECTRE.progressLabel
+
+-----------------------------------------------------
+-- ECU OVERRIDE (SPECTRE SIMULATION)
+-----------------------------------------------------
+local function ECU()
     moduleTransition(function()
-        disconnectConn(liveUpdater)
-        disconnectConn(listUpdater)
-        disconnectConn(progressUpdater)
-
+        local lastCar = _G.AUTELPRO_SPECTRE.lastCar()
         if not lastCar or not lastCar.Parent then
-            setText("<b>ECU OVERRIDE MODULE</b>\n\nNo target selected.\nAcquire target first.")
+            setText("<b>ECU OVERRIDE SUITE</b>\n\nNo target selected.\nAcquire a vehicle first.")
             status.Text = "Status: Idle"
             return
         end
 
-        setText(("<b>ECU OVERRIDE MODULE</b>\n\nVehicle: %s\n\nClearing client-side immobilizer flags...")
-            :format(lastCar.Name))
-        status.Text = "Status: Override"
+        status.Text = "Status: ECU // NEGOTIATION"
 
+        -----------------------------------------------------
+        -- PHASE 1: CAN-BUS HANDSHAKE (SIMULATED)
+        -----------------------------------------------------
+        setText(("<b>ECU OVERRIDE SUITE</b>\n\nVehicle: %s\n\nInitiating CAN handshake...")
+            :format(lastCar.Name))
+        task.wait(.35)
+
+        setText("<b>ECU OVERRIDE SUITE</b>\n\nAuthenticating with BCM...\nRolling code sync in progress...")
+        task.wait(.45)
+
+        -----------------------------------------------------
+        -- PHASE 2: FRAME INJECTION (SIMULATED)
+        -----------------------------------------------------
+        setText("<b>ECU OVERRIDE SUITE</b>\n\nInjecting override frames...\n0x1A2 → 0x3F1")
+        task.wait(.4)
+
+        -----------------------------------------------------
+        -- PHASE 3: ECU RESPONSE (SIMULATED)
+        -----------------------------------------------------
+        setText("<b>ECU OVERRIDE SUITE</b>\n\nAwaiting ECU response...\nMonitoring bus traffic...")
+        task.wait(.5)
+
+        -----------------------------------------------------
+        -- PHASE 4: CLIENT-SIDE FLAG CLEAR (REAL)
+        -----------------------------------------------------
         for _, d in ipairs(lastCar:GetDescendants()) do
+
+            -- Engine / immobilizer flags
             if d:GetAttribute("EngineDisabled") ~= nil then
                 d:SetAttribute("EngineDisabled", false)
             end
@@ -493,300 +587,400 @@ local function REPROGRAM()
             if d:GetAttribute("Immobilized") ~= nil then
                 d:SetAttribute("Immobilized", false)
             end
+
+            -- SeatDisabled flag
+            if d:GetAttribute("SeatDisabled") ~= nil then
+                d:SetAttribute("SeatDisabled", false)
+            end
         end
 
-        progressLabel.Text = getProgressBar(100)
-        setText(("<b>ECU OVERRIDE MODULE</b>\n\nVehicle: %s\n\n<font color='rgb(0,255,0)'>CLIENT OVERRIDE COMPLETE</font>")
+        -----------------------------------------------------
+        -- PHASE 4B: SPECTRE SEAT-ATTACH STABILIZER
+        -----------------------------------------------------
+        local hum = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        local seat = lastCar:FindFirstChildWhichIsA("VehicleSeat", true)
+
+        if hum and seat then
+            -- Force Roblox to rebuild the weld cleanly
+            hum.Sit = false
+            task.wait()
+
+            -- Ensure seat attributes cannot block sit
+            if seat:GetAttribute("SeatDisabled") ~= nil then
+                seat:SetAttribute("SeatDisabled", false)
+            end
+
+            -- Re-enable sit
+            hum.Sit = true
+            task.wait(.1)
+
+            -- Final failsafe: force seated state if weld didn't form
+            if hum.SeatPart ~= seat then
+                hum:ChangeState(Enum.HumanoidStateType.Seated)
+                hum.Sit = true
+            end
+        end
+
+        -----------------------------------------------------
+        -- PHASE 5: BREACH CONFIRMATION (SPECTRE PULSE)
+        -----------------------------------------------------
+        progressLabel.Text = "<font color='rgb(255,60,60)'>▂▂▂▂▂▂▂▂▂▂</font>"
+
+        setText(("<b>ECU OVERRIDE SUITE</b>\n\nVehicle: %s\n\n<font color='rgb(0,255,0)'>BREACH COMPLETE</font>")
             :format(lastCar.Name))
-        status.Text = "Status: Override Complete"
+
+        status.Text = "Status: ECU // COMPLETE"
     end)
 end
 
--------------------------------------------------
--- SCAN MODULE (TACTICAL SCAN)
--------------------------------------------------
+-- Expose module
+_G.AUTELPRO_SPECTRE.ECU = ECU
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 7: KEY SUITE (NO PANIC MODE)
+-------------------------
 
-local function SCAN()
-    moduleTransition(function()
-        status.Text = "Status: Scanning"
+local setText = _G.AUTELPRO_SPECTRE.setText
+local moduleTransition = _G.AUTELPRO_SPECTRE.moduleTransition
+local status = _G.AUTELPRO_SPECTRE.status
+local progressLabel = _G.AUTELPRO_SPECTRE.progressLabel
+local panel = _G.AUTELPRO_SPECTRE.panel
+local VM = _G.AUTELPRO_SPECTRE.VM
 
-        local list = buildVehicleList()
-        if #list == 0 then
-            setText("<b>TACTICAL SCAN</b>\n\nNo vehicles detected in AO.")
-            status.Text = "Status: Scan complete (0)"
-            return
-        end
-
-        local count = #list
-        local nearest = list[1]
-        local farthest = list[#list]
-
-        local sum = 0
-        for _,e in ipairs(list) do
-            sum += e.dist
-        end
-
-        local avg = math.floor(sum / count)
-
-        local text = string.format(
-            "<b>TACTICAL SCAN</b>\n\nTargets detected: %d\n\nNearest: %s (%.0f studs)\nFarthest: %s (%.0f studs)\nAverage distance: %d studs",
-            count,
-            nearest.car.Name, nearest.dist,
-            farthest.car.Name, farthest.dist,
-            avg
-        )
-
-        setText(text)
-        status.Text = "Status: Scan complete ("..count..")"
-    end)
+-----------------------------------------------------
+-- ROLLING CODE SYNC (SIMULATED)
+-----------------------------------------------------
+local function rollingSync()
+    progressLabel.Text = ""
+    for i = 1, 10 do
+        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
+        task.wait(0.05)
+    end
 end
 
--------------------------------------
--- SECTION 5: SPOOF KEY MODULE (BLACK-OPS)
--------------------------------------
+-----------------------------------------------------
+-- LOCK FUNCTION
+-----------------------------------------------------
+local function doLock(car)
+    setText("<b>KEY SUITE</b>\n\nRolling code sync...")
+    rollingSync()
 
-local function SPOOFKEY()
+    setText("<b>KEY SUITE</b>\n\n<font color='rgb(255,60,60)'>LOCKED</font>\n" .. car.Name)
+    status.Text = "Status: LOCK // SPECTRE"
+
+    -- Visual flash (safe)
+    for _, l in ipairs(car:GetDescendants()) do
+        if l:IsA("Light") then
+            l.Enabled = true
+            task.wait(0.1)
+            l.Enabled = false
+        end
+    end
+end
+
+-----------------------------------------------------
+-- UNLOCK FUNCTION
+-----------------------------------------------------
+local function doUnlock(car)
+    setText("<b>KEY SUITE</b>\n\nRolling code sync...")
+    rollingSync()
+
+    setText("<b>KEY SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCKED</font>\n" .. car.Name)
+    status.Text = "Status: UNLOCK // SPECTRE"
+
+    -- Ghost flicker
+    for _, l in ipairs(car:GetDescendants()) do
+        if l:IsA("Light") then
+            l.Enabled = true
+            task.wait(0.05)
+            l.Enabled = false
+        end
+    end
+end
+
+-----------------------------------------------------
+-- FLASH FUNCTION
+-----------------------------------------------------
+local function doFlash(car)
+    setText("<b>KEY SUITE</b>\n\nFlashing lights...")
+    status.Text = "Status: FLASH // SPECTRE"
+
+    for i = 1, 2 do
+        for _, l in ipairs(car:GetDescendants()) do
+            if l:IsA("Light") then
+                l.Enabled = true
+            end
+        end
+        task.wait(0.15)
+        for _, l in ipairs(car:GetDescendants()) do
+            if l:IsA("Light") then
+                l.Enabled = false
+            end
+        end
+        task.wait(0.15)
+    end
+
+    setText("<b>KEY SUITE</b>\n\nFlash complete.")
+end
+
+-----------------------------------------------------
+-- KEY SUITE MODULE
+-----------------------------------------------------
+local function KEY()
     moduleTransition(function()
+        local lastCar = _G.AUTELPRO_SPECTRE.lastCar()
         if not lastCar or not lastCar.Parent then
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nNo target selected.\nAcquire target first.")
+            setText("<b>KEY SUITE</b>\n\nNo target selected.\nAcquire a vehicle first.")
             status.Text = "Status: Idle"
             return
         end
 
-        local p = VM.primary[lastCar]
-        if not p then
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nVehicle missing primary part.")
-            return
-        end
+        status.Text = "Status: KEY // READY"
+        setText("<b>KEY SUITE</b>\n\nSelect an action for:\n" .. lastCar.Name)
 
-        local ok, r = pcall(root)
-        if not ok or not r or not r.Parent then return end
-
-        local dist = (p.Position - r.Position).Magnitude
-        if dist > 120 then
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nOut of range.\nClose distance to target.")
-            status.Text = "Status: Out of range"
-            return
-        end
-
-        setText(("<b>KEYFOB SPOOF SUITE</b>\n\nVehicle: %s\nRange OK (%d studs)\n\nSelect operation:")
-            :format(lastCar.Name, math.floor(dist)))
-        status.Text = "Status: Key Suite Ready"
-
-        local function makeAction(name, order, callback)
+        -----------------------------------------------------
+        -- BUTTON BUILDER
+        -----------------------------------------------------
+        local function makeButton(label, callback)
             local b = Instance.new("TextButton", panel)
-            b.Size = UDim2.new(1,-16,0,30)
-            b.Position = UDim2.new(0,8,0,170 + (order * 34))
-            b.BackgroundColor3 = Color3.fromRGB(15,15,22)
+            b.Size = UDim2.new(1, -20, 0, 40)
+            b.Position = UDim2.new(0, 10, 0, 260 + (#panel:GetChildren() * 45))
+            b.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
             b.Font = Enum.Font.GothamBold
-            b.TextColor3 = Color3.fromRGB(240,240,245)
             b.TextScaled = true
-            b.Text = name
-            Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+            b.TextColor3 = Color3.fromRGB(240, 240, 245)
+            b.Text = label
+
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
 
             b.MouseEnter:Connect(function()
-                tween(b,{BackgroundColor3=CFG.Col},.15):Play()
+                tween(b, {BackgroundColor3 = CFG.Col}, 0.15):Play()
             end)
 
             b.MouseLeave:Connect(function()
-                tween(b,{BackgroundColor3=Color3.fromRGB(15,15,22)},.15):Play()
+                tween(b, {BackgroundColor3 = Color3.fromRGB(15,15,22)}, 0.15):Play()
             end)
 
-            b.MouseButton1Click:Connect(callback)
+            b.MouseButton1Click:Connect(function()
+                callback(lastCar)
+            end)
         end
 
-        -------------------------------------------------
-        -- ACTION: LOCK DOORS
-        -------------------------------------------------
-        makeAction("Lock Doors",1,function()
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nTransmitting lock command...")
-            status.Text = "Status: Locking"
-
-            for _,d in ipairs(lastCar:GetDescendants()) do
-                if d:IsA("BasePart") then
-                    pcall(function()
-                        d:SetAttribute("Locked", true)
-                    end)
-                end
-            end
-
-            task.wait(.3)
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nDoors locked.\nVisual confirmation triggered.")
-            status.Text = "Status: Locked"
-
-            for _,l in ipairs(lastCar:GetDescendants()) do
-                if l:IsA("Light") then
-                    pcall(function()
-                        l.Enabled = true
-                        task.delay(.25,function()
-                            l.Enabled = false
-                        end)
-                    end)
-                end
-            end
-        end)
-
-        -------------------------------------------------
-        -- ACTION: UNLOCK DOORS (Simulated CAN Unlock)
-        -------------------------------------------------
-        makeAction("Unlock Doors",2,function()
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nInitiating CAN handshake...")
-            status.Text = "Status: CAN Negotiation"
-            task.wait(.4)
-
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nAuthenticating with BCM...\nRolling code exchange in progress...")
-            task.wait(.6)
-
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nInjecting unlock frame...\n0x1A2 → 0x3F1")
-            task.wait(.5)
-
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nActuator response pending...\nAwaiting confirmation...")
-            task.wait(.5)
-
-            for _,d in ipairs(lastCar:GetDescendants()) do
-                if d:IsA("BasePart") then
-                    pcall(function()
-                        d:SetAttribute("Locked", false)
-                    end)
-                end
-            end
-
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCK SUCCESS</font>\nCAN session terminated.")
-            status.Text = "Status: Unlocked"
-
-            for _,l in ipairs(lastCar:GetDescendants()) do
-                if l:IsA("Light") then
-                    pcall(function()
-                        l.Enabled = true
-                        task.delay(.25,function()
-                            l.Enabled = false
-                        end)
-                    end)
-                end
-            end
-        end)
-
-        -------------------------------------------------
-        -- ACTION: HONK HORN
-        -------------------------------------------------
-        makeAction("Honk Horn",3,function()
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nTriggering horn actuator...")
-            status.Text = "Status: Horn"
-
-            for _,s in ipairs(lastCar:GetDescendants()) do
-                if s:IsA("Sound") and s.Name:lower():find("horn") then
-                    pcall(function()
-                        s:Play()
-                    end)
-                end
-            end
-
-            task.wait(.3)
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nHorn activation complete.")
-        end)
-
-        -------------------------------------------------
-        -- ACTION: FLASH LIGHTS
-        -------------------------------------------------
-        makeAction("Flash Lights",4,function()
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nFlashing external lighting...")
-            status.Text = "Status: Flash"
-
-            for _,l in ipairs(lastCar:GetDescendants()) do
-                if l:IsA("Light") then
-                    pcall(function()
-                        l.Enabled = true
-                        task.delay(.3,function()
-                            l.Enabled = false
-                        end)
-                    end)
-                end
-            end
-
-            task.wait(.3)
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nFlash sequence complete.")
-        end)
-
-        -------------------------------------------------
-        -- ACTION: PANIC MODE
-        -------------------------------------------------
-        makeAction("Panic Mode",5,function()
-            setText("<b>KEYFOB SPOOF SUITE</b>\n\nPanic protocol engaged.")
-            status.Text = "Status: PANIC"
-
-            local t = 0
-            local panicConn
-            panicConn = rs.Heartbeat:Connect(function(dt)
-                t += dt
-                if t > 3 then
-                    panicConn:Disconnect()
-                    status.Text = "Status: Idle"
-                    setText("<b>KEYFOB SPOOF SUITE</b>\n\nPanic protocol disengaged.")
-                    return
-                end
-
-                for _,l in ipairs(lastCar:GetDescendants()) do
-                    if l:IsA("Light") then
-                        pcall(function()
-                            l.Enabled = (math.random() > .5)
-                        end)
-                    end
-                end
-
-                for _,s in ipairs(lastCar:GetDescendants()) do
-                    if s:IsA("Sound") and s.Name:lower():find("horn") then
-                        if math.random() > .8 then
-                            pcall(function()
-                                s:Play()
-                            end)
-                        end
-                    end
-                end
-            end)
-        end)
+        -----------------------------------------------------
+        -- BUTTONS (NO PANIC MODE)
+        -----------------------------------------------------
+        makeButton("UNLOCK", doUnlock)
+        makeButton("LOCK", doLock)
+        makeButton("FLASH", doFlash)
     end)
 end
 
--------------------------------------
--- SECTION 7: EXIT MODULE
--------------------------------------
+-- Expose module
+_G.AUTELPRO_SPECTRE.KEY = KEY
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 8: TACTICAL SCAN SUITE
+-------------------------
 
-local function EXIT()
+local buildVehicleList = _G.AUTELPRO_SPECTRE.buildVehicleList
+local setText = _G.AUTELPRO_SPECTRE.setText
+local moduleTransition = _G.AUTELPRO_SPECTRE.moduleTransition
+local status = _G.AUTELPRO_SPECTRE.status
+local progressLabel = _G.AUTELPRO_SPECTRE.progressLabel
+local panel = _G.AUTELPRO_SPECTRE.panel
+
+-----------------------------------------------------
+-- SPECTRE RADAR PULSE
+-----------------------------------------------------
+local function radarPulse()
+    progressLabel.Text = ""
+    for i = 1, 12 do
+        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
+        task.wait(0.04)
+    end
+    for i = 12, 1, -1 do
+        progressLabel.Text = string.rep("<font color='rgb(220,40,40)'>▂</font>", i)
+        task.wait(0.03)
+    end
+end
+
+-----------------------------------------------------
+-- TACTICAL SCAN MODULE
+-----------------------------------------------------
+local function SCAN()
     moduleTransition(function()
-        clearSonarUI()
-        lastCar = nil
+        status.Text = "Status: SCAN // ACTIVE"
+        setText("<b>TACTICAL SCAN SUITE</b>\n\nInitializing spectral sweep...")
 
-        status.Text = "Status: Idle"
-        setText("<b>SYSTEM DISENGAGE PROTOCOL</b>\n\nSession closed.\nPress T or type !autel to re-engage.")
+        radarPulse()
 
-        tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
-        task.delay(.25, function()
-            tab.Visible = false
-        end)
+        local list = buildVehicleList()
+        if #list == 0 then
+            setText("<b>TACTICAL SCAN SUITE</b>\n\nNo vehicle signatures detected.\nAO remains cold.")
+            return
+        end
+
+        setText("<b>TACTICAL SCAN SUITE</b>\n\nTargets detected:\n")
+
+        -----------------------------------------------------
+        -- SCAN READOUT
+        -----------------------------------------------------
+        local y = 260
+        for _, entry in ipairs(list) do
+            local car = entry.car
+            local dist = math.floor(entry.dist)
+
+            local line = Instance.new("TextLabel", panel)
+            line.Size = UDim2.new(1, -20, 0, 30)
+            line.Position = UDim2.new(0, 10, 0, y)
+            line.BackgroundTransparency = 1
+            line.Font = Enum.Font.Gotham
+            line.TextScaled = true
+            line.RichText = true
+            line.TextColor3 = Color3.fromRGB(240, 240, 245)
+            line.TextXAlignment = Enum.TextXAlignment.Left
+
+            line.Text = string.format(
+                "<b>%s</b>  —  <font color='rgb(220,40,40)'>%d studs</font>",
+                car.Name,
+                dist
+            )
+
+            y += 34
+        end
+
+        status.Text = "Status: SCAN // COMPLETE"
     end)
 end
 
--------------------------------------
--- SECTION 8: BUTTON CREATION
--------------------------------------
+-- Expose module
+_G.AUTELPRO_SPECTRE.SCAN = SCAN
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 9: SYSTEM EXIT / COLLAPSE MODULE
+-------------------------
 
-local function btn(name, order, callback)
-    local b = Instance.new("TextButton", nav)
-    b.Size = UDim2.new(1,0,0,30)
-    b.Position = UDim2.new(0,0,0,(order-1)*34)
-    b.BackgroundColor3 = Color3.fromRGB(15,15,22)
+local moduleTransition = _G.AUTELPRO_SPECTRE.moduleTransition
+local clearPanel = _G.AUTELPRO_SPECTRE.clearPanel
+local status = _G.AUTELPRO_SPECTRE.status
+local setText = _G.AUTELPRO_SPECTRE.setText
+
+-----------------------------------------------------
+-- SYSTEM EXIT MODULE
+-----------------------------------------------------
+local function EXIT()
+    -- Fade out UI text first
+    setText("<b>SYSTEM EXIT</b>\n\nCollapsing SPECTRE interface...")
+    status.Text = "Status: EXIT // COLLAPSE"
+
+    task.wait(0.25)
+
+    -- Clear panel buttons and text
+    clearPanel()
+
+    -- Collapse back to compact mode
+    collapseToCompact()
+
+    -- Reset status
+    status.Text = "Status: Idle"
+end
+
+-- Expose module
+_G.AUTELPRO_SPECTRE.EXIT = EXIT
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 10: COMMAND ROUTING ENGINE
+-------------------------
+
+local uis = game.UserInputService
+local plr = game.Players.LocalPlayer
+
+local ACQUIRE = _G.AUTELPRO_SPECTRE.ACQUIRE
+local ECU = _G.AUTELPRO_SPECTRE.ECU
+local KEY = _G.AUTELPRO_SPECTRE.KEY
+local SCAN = _G.AUTELPRO_SPECTRE.SCAN
+local EXIT = _G.AUTELPRO_SPECTRE.EXIT
+
+local setText = _G.AUTELPRO_SPECTRE.setText
+local status = _G.AUTELPRO_SPECTRE.status
+
+-----------------------------------------------------
+-- TABLET TOGGLE (KEYBIND)
+-----------------------------------------------------
+uis.InputBegan:Connect(function(i)
+    if i.KeyCode == CFG.Key then
+        if tab.Visible or not isFull then
+            expandToFull()
+            setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
+            status.Text = "Status: READY"
+        else
+            EXIT()
+        end
+    end
+end)
+
+-----------------------------------------------------
+-- CHAT COMMAND TRIGGER
+-----------------------------------------------------
+plr.Chatted:Connect(function(msg)
+    msg = msg:lower()
+
+    if msg == CFG.Cmd then
+        if tab.Visible or not isFull then
+            expandToFull()
+            setText("<b>AUTEL//PRO SPECTRE</b>\n\nSelect a module.")
+            status.Text = "Status: READY"
+        else
+            EXIT()
+        end
+    end
+
+    -------------------------------------------------
+    -- MODULE ROUTING
+    -------------------------------------------------
+    if msg == "!acq" then ACQUIRE() end
+    if msg == "!ecu" then ECU() end
+    if msg == "!key" then KEY() end
+    if msg == "!scan" then SCAN() end
+    if msg == "!exit" then EXIT() end
+end)
+-------------------------
+-- AUTEL//PRO SPECTRE
+-- SECTION 11: BUTTON PANEL
+-------------------------
+
+local panel = _G.AUTELPRO_SPECTRE.panel
+local setText = _G.AUTELPRO_SPECTRE.setText
+local status = _G.AUTELPRO_SPECTRE.status
+
+local ACQUIRE = _G.AUTELPRO_SPECTRE.ACQUIRE
+local ECU = _G.AUTELPRO_SPECTRE.ECU
+local KEY = _G.AUTELPRO_SPECTRE.KEY
+local SCAN = _G.AUTELPRO_SPECTRE.SCAN
+local EXIT = _G.AUTELPRO_SPECTRE.EXIT
+
+-----------------------------------------------------
+-- BUTTON CREATOR
+-----------------------------------------------------
+local function makeButton(label, order, callback)
+    local b = Instance.new("TextButton", panel)
+    b.Size = UDim2.new(0, 180, 0, 40)
+    b.Position = UDim2.new(0, 10 + ((order-1) * 190), 0, 10)
+    b.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
     b.Font = Enum.Font.GothamBold
-    b.TextColor3 = Color3.fromRGB(240,240,245)
     b.TextScaled = true
-    b.Text = name
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+    b.TextColor3 = Color3.fromRGB(240, 240, 245)
+    b.Text = label
+    b.RichText = true
+
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
 
     b.MouseEnter:Connect(function()
-        tween(b,{BackgroundColor3=CFG.Col},.15):Play()
+        tween(b, {BackgroundColor3 = CFG.Col}, 0.15):Play()
     end)
 
     b.MouseLeave:Connect(function()
-        tween(b,{BackgroundColor3=Color3.fromRGB(15,15,22)},.15):Play()
+        tween(b, {BackgroundColor3 = Color3.fromRGB(15,15,22)}, 0.15):Play()
     end)
 
     b.MouseButton1Click:Connect(function()
@@ -794,55 +988,24 @@ local function btn(name, order, callback)
     end)
 end
 
-btn("Acquire",   1, CONNECTIONS)
-btn("ECU Override", 2, REPROGRAM)
-btn("Scan",      3, SCAN)
-btn("Key Suite", 4, SPOOFKEY)
-btn("Disengage", 5, EXIT)
-
--------------------------------------
--- SECTION 9: INPUT HANDLING
--------------------------------------
-
-local function openTablet()
-    tab.Visible = true
-    tween(tab, {Position = CFG.Pos}, .25):Play()
-
-    if lastCar and lastCar.Parent then
-        setText(("SYSTEM ONLINE\n\nReconnected to %s.\nSelect module.")
-            :format(lastCar.Name))
-        status.Text = "Status: Ready"
-    else
-        setText("SYSTEM ONLINE\n\nSelect module on the left.")
-        status.Text = "Status: Idle"
-    end
-end
-
-local function closeTablet()
-    tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
-    task.delay(.25, function()
-        tab.Visible = false
-    end)
-end
-
-uis.InputBegan:Connect(function(i, gpe)
-    if gpe then return end
-    if i.KeyCode == CFG.Key then
-        if tab.Visible then
-            closeTablet()
-        else
-            openTablet()
+-----------------------------------------------------
+-- BUILD BUTTON PANEL
+-----------------------------------------------------
+local function BUILD_BUTTON_PANEL()
+    -- Clear old buttons
+    for _, v in ipairs(panel:GetChildren()) do
+        if v:IsA("TextButton") then
+            v:Destroy()
         end
     end
-end)
 
-plr.Chatted:Connect(function(msg)
-    msg = msg:lower()
-    if msg == CFG.Cmd then
-        if tab.Visible then
-            closeTablet()
-        else
-            openTablet()
-        end
-    end
-end)
+    -- Create new buttons
+    makeButton("ACQUIRE", 1, ACQUIRE)
+    makeButton("ECU",     2, ECU)
+    makeButton("KEY",     3, KEY)
+    makeButton("SCAN",    4, SCAN)
+    makeButton("EXIT",    5, EXIT)
+end
+
+-- Expose
+_G.AUTELPRO_SPECTRE.BUILD_BUTTON_PANEL = BUILD_BUTTON_PANEL
