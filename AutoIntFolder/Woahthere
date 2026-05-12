@@ -15,8 +15,7 @@ local CFG = {
     Col   = Color3.fromRGB(220,40,40),
     BG    = Color3.fromRGB(10,10,14),
     Panel = Color3.fromRGB(18,18,24),
-    -- Desktop‑only; no mobile button
-    UseMobileButton = false
+    UseMobileButton = false -- Desktop only
 }
 
 local function tween(o, p, t)
@@ -109,8 +108,14 @@ workspace.ChildRemoved:Connect(function(m)
 
     if lastCar == m then
         lastCar = nil
-        if status then status.Text = "Status: Idle" end
-        if setText then setText("Target lost.\n\nSelect a new vehicle.") end
+
+        -- SAFE PATCH: Only run if GUI exists
+        if _G.AUTEL_STATUS then
+            _G.AUTEL_STATUS.Text = "Status: Idle"
+        end
+        if _G.AUTEL_SETTEXT then
+            _G.AUTEL_SETTEXT("Target lost.\n\nSelect a new vehicle.")
+        end
     end
 end)
 
@@ -153,7 +158,7 @@ st.Thickness = 2
 st.Color = CFG.Col
 st.Transparency = .2
 
--- Dragging (desktop)
+-- Dragging
 local drag, ds, sp
 tab.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -227,6 +232,8 @@ local function setText(t)
     end)
 end
 
+_G.AUTEL_SETTEXT = setText
+
 local progressLabel = Instance.new("TextLabel", panel)
 progressLabel.Size = UDim2.new(1,-16,0,30)
 progressLabel.Position = UDim2.new(0,8,0,140)
@@ -247,6 +254,8 @@ status.TextScaled = true
 status.TextColor3 = Color3.fromRGB(200,200,200)
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.Text = "Status: Idle"
+
+_G.AUTEL_STATUS = status
 
 local sonarList = Instance.new("ScrollingFrame", panel)
 sonarList.Size = UDim2.new(1,-16,1,-140)
@@ -536,7 +545,7 @@ local function SCAN()
     )
 
     setText(text)
-    status.Text = "Status: Scan complete ("..count..")"
+    status.Text = "Status: Scan complete ("        ..count..")"
 end
 
 
@@ -655,7 +664,7 @@ local function SPOOFKEY()
                 pcall(function()
                     l.Enabled = true
                     task.delay(.3,function()
-                        l.Enabled = false
+                        l.Enabled = false)
                     end)
                 end)
             end
@@ -700,249 +709,3 @@ local function SPOOFKEY()
         end)
     end)
 end
-
-
--------------------------------------
--- SECTION 6: ENCRYPTED KEY FOB MODULE
--------------------------------------
-
-local function ENCRYPTEDKEY()
-    clearSonarUI()
-
-    if not lastCar or not lastCar.Parent then
-        setText("ENCRYPTED KEY FOB\n\nNo target selected.\nUse Connections first.")
-        status.Text = "Status: Idle"
-        return
-    end
-
-    local p = VM.primary[lastCar]
-    if not p then
-        setText("ENCRYPTED KEY FOB\n\nVehicle missing primary part.")
-        return
-    end
-
-    local ok, r = pcall(root)
-    if not ok or not r or not r.Parent then return end
-
-    local dist = (p.Position - r.Position).Magnitude
-    if dist > 120 then
-        setText("ENCRYPTED KEY FOB\n\nOut of range.\nMove closer to the vehicle.")
-        status.Text = "Status: Out of range"
-        return
-    end
-
-    local seed = lastCar:GetAttribute("KeySeed")
-    if not seed then
-        seed = math.random(100000,999999)
-        lastCar:SetAttribute("KeySeed", seed)
-    end
-
-    local challenge = math.random(10000,99999)
-    lastCar:SetAttribute("Challenge", challenge)
-
-    setText((
-        "ENCRYPTED KEY FOB\n\nVehicle: %s\nRange OK (%d studs)\n\nChallenge Code: %d\n\nSelect an action:"
-    ):format(lastCar.Name, math.floor(dist), challenge))
-
-    status.Text = "Status: Encrypted Ready"
-
-    local function makeAction(name, order, callback)
-        local b = Instance.new("TextButton", panel)
-        b.Size = UDim2.new(1,-16,0,30)
-        b.Position = UDim2.new(0,8,0,180 + (order*34))
-        b.BackgroundColor3 = Color3.fromRGB(20,20,26)
-        b.Font = Enum.Font.GothamBold
-        b.TextColor3 = Color3.fromRGB(240,240,245)
-        b.TextScaled = true
-        b.Text = name
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-
-        b.MouseEnter:Connect(function()
-            tween(b,{BackgroundColor3=CFG.Col},.15):Play()
-        end)
-
-        b.MouseLeave:Connect(function()
-            tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
-        end)
-
-        b.MouseButton1Click:Connect(callback)
-    end
-
-    local function encryptResponse(seedVal, challengeVal)
-        return (seedVal * 7 + challengeVal * 13) % 999999
-    end
-
-    local function verify()
-        local storedSeed = lastCar:GetAttribute("KeySeed")
-        local storedChallenge = lastCar:GetAttribute("Challenge")
-        local expected = encryptResponse(storedSeed, storedChallenge)
-        return expected
-    end
-
-    -- Unlock (Encrypted)
-    makeAction("Unlock (Encrypted)",1,function()
-        local expected = verify()
-        local response = encryptResponse(seed, challenge)
-
-        if response ~= expected then
-            setText("ENCRYPTED KEY FOB\n\nHandshake Failed.\nRolling code mismatch.")
-            status.Text = "Status: Denied"
-            return
-        end
-
-        for _, d in ipairs(lastCar:GetDescendants()) do
-            if d:IsA("BasePart") then
-                pcall(function() d:SetAttribute("Locked", false) end)
-            end
-        end
-
-        lastCar:SetAttribute("KeySeed", seed + math.random(5,25))
-
-        setText("ENCRYPTED KEY FOB\n\nDoors Unlocked.\nHandshake Verified.")
-        status.Text = "Status: Unlocked"
-    end)
-
-    -- Lock (Encrypted)
-    makeAction("Lock (Encrypted)",2,function()
-        local expected = verify()
-        local response = encryptResponse(seed, challenge)
-
-        if response ~= expected then
-            setText("ENCRYPTED KEY FOB\n\nHandshake Failed.\nRolling code mismatch.")
-            status.Text = "Status: Denied"
-            return
-        end
-
-        for _, d in ipairs(lastCar:GetDescendants()) do
-            if d:IsA("BasePart") then
-                pcall(function() d:SetAttribute("Locked", true) end)
-            end
-        end
-
-        lastCar:SetAttribute("KeySeed", seed + math.random(5,25))
-
-        setText("ENCRYPTED KEY FOB\n\nDoors Locked.\nHandshake Verified.")
-        status.Text = "Status: Locked"
-    end)
-
-    -- Replay Attack
-    makeAction("Replay Attack",3,function()
-        local storedSeed = lastCar:GetAttribute("KeySeed")
-        local storedChallenge = lastCar:GetAttribute("Challenge")
-
-        local fakeResponse = encryptResponse(storedSeed, storedChallenge)
-
-        if fakeResponse == encryptResponse(seed, challenge) then
-            setText("ENCRYPTED KEY FOB\n\nReplay Attack Failed.\nRolling code already changed.")
-            status.Text = "Status: Replay Blocked"
-        else
-            setText("ENCRYPTED KEY FOB\n\nReplay Attack Blocked.\nVehicle rejected old code.")
-            status.Text = "Status: Blocked"
-        end
-    end)
-
-    -- Force Sync
-    makeAction("Force Sync",4,function()
-        local newSeed = math.random(100000,999999)
-        lastCar:SetAttribute("KeySeed", newSeed)
-
-        setText("ENCRYPTED KEY FOB\n\nKey Fob Resynced.\nNew Rolling Code Established.")
-        status.Text = "Status: Synced"
-    end)
-end
-
-
--------------------------------------
--- SECTION 7: EXIT MODULE
--------------------------------------
-
-local function EXIT()
-    clearSonarUI()
-    lastCar = nil
-
-    status.Text = "Status: Idle"
-    setText("Session closed.\n\nPress T or type !autel to reopen.")
-
-    tab.Visible = false
-end
-
-
--------------------------------------
--- SECTION 8: BUTTON CREATION
--------------------------------------
-
-local function btn(name, order, callback)
-    local b = Instance.new("TextButton", nav)
-    b.Size = UDim2.new(1,0,0,30)
-    b.Position = UDim2.new(0,0,0,(order-1)*34)
-    b.BackgroundColor3 = Color3.fromRGB(20,20,26)
-    b.Font = Enum.Font.GothamBold
-    b.TextColor3 = Color3.fromRGB(240,240,245)
-    b.TextScaled = true
-    b.Text = name
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-
-    b.MouseEnter:Connect(function()
-        tween(b,{BackgroundColor3=CFG.Col},.15):Play()
-    end)
-
-    b.MouseLeave:Connect(function()
-        tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
-    end)
-
-    b.MouseButton1Click:Connect(callback)
-end
-
-btn("Connections",   1, CONNECTIONS)
-btn("Reprogram",     2, REPROGRAM)
-btn("Scan",          3, SCAN)
-btn("Spoof Key",     4, SPOOFKEY)
-btn("Encrypted Key", 5, ENCRYPTEDKEY)
-btn("Exit",          6, EXIT)
-
-
--------------------------------------
--- SECTION 9: INPUT HANDLING
--------------------------------------
-
-local function openTablet()
-    tab.Visible = true
-    tween(tab, {Position = CFG.Pos}, .25):Play()
-
-    if lastCar and lastCar.Parent then
-        setText(("Reconnected to %s.\n\nSelect a module."):format(lastCar.Name))
-        status.Text = "Status: Ready"
-    else
-        setText("AUTEL PROPAD READY\n\nSelect a module on the left.")
-        status.Text = "Status: Idle"
-    end
-end
-
-local function closeTablet()
-    tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
-    task.delay(.25, function()
-        tab.Visible = false
-    end)
-end
-
-uis.InputBegan:Connect(function(i, gpe)
-    if gpe then return end
-    if i.KeyCode == CFG.Key then
-        if tab.Visible then
-            closeTablet()
-        else
-            openTablet()
-        end
-    end
-end)
-
-plr.Chatted:Connect(function(msg)
-    msg = msg:lower()
-    if msg == CFG.Cmd then
-        if tab.Visible then
-            closeTablet()
-        else
-            openTablet()
-        end
-    end
-end)
