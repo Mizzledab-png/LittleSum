@@ -393,24 +393,6 @@ local function CONNECTIONS()
     end)
 end
 
--- DRIVER KICK
-local function kickDriver(car)
-    local seat = car:FindFirstChildWhichIsA("VehicleSeat", true)
-    if not seat then return end
-
-    local occ = seat.Occupant
-    if occ then
-        occ.Sit = false
-        local hrp = occ.Parent and occ.Parent:FindFirstChild("HumanoidRootPart")
-        if hrp then hrp.CFrame += Vector3.new(0,2,0) end
-
-        seat.Disabled = true
-        task.delay(0.5, function()
-            if seat then seat.Disabled = false end
-        end)
-    end
-end
-
 -- REPROGRAM MODULE
 local function REPROGRAM()
     clearSonarUI()
@@ -428,9 +410,7 @@ local function REPROGRAM()
         if d:GetAttribute("Immobilized") ~= nil then d:SetAttribute("Immobilized", false) end
     end
 
-    kickDriver(lastCar)
-
-    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key spoofed.\nDriver removed."):format(lastCar.Name))
+    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key spoofed."):format(lastCar.Name))
     status.Text = "Status: Reprogrammed"
 end
 
