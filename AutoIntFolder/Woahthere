@@ -12,14 +12,14 @@ local CFG = {
     Pos = UDim2.new(.5,0,.55,0),
     Key = Enum.KeyCode.T,
     Cmd = "!autel",
-    Col = Color3.fromRGB(220,40,40),
-    BG = Color3.fromRGB(10,10,14),
-    Panel = Color3.fromRGB(18,18,24),
+    Col = Color3.fromRGB(220,40,40), -- tactical red
+    BG = Color3.fromRGB(5,5,8),
+    Panel = Color3.fromRGB(12,12,18),
     UseMobileButton = true
 }
 
 local function tween(o,p,t)
-    return ts:Create(o, TweenInfo.new(t or .25, Enum.EasingStyle.Quad), p)
+    return ts:Create(o, TweenInfo.new(t or .25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), p)
 end
 
 local function isValidCarName(name)
@@ -45,7 +45,7 @@ local function getProgressBar(pct)
     local empty = 10 - filled
     local bar = ""
     for _ = 1,filled do
-        bar = bar .. "<font color='rgb(0,255,0)'>▂</font>"
+        bar = bar .. "<font color='rgb(220,40,40)'>▂</font>"
     end
     for _ = 1,empty do
         bar = bar .. "<font color='rgb(60,60,60)'>▂</font>"
@@ -57,12 +57,13 @@ local function root()
     local c = plr.Character or plr.CharacterAdded:Wait()
     return c:WaitForChild("HumanoidRootPart")
 end
+
 -------------------------------
 -- SECTION 2: VEHICLE REGISTRY
 -------------------------------
 
 local VM = {cars = {}, primary = {}}
-local lastCar = nil  -- declared early so registry can clear it if needed
+local lastCar = nil
 
 local function assignPrimaryPart(m)
     if m.PrimaryPart then return m.PrimaryPart end
@@ -91,7 +92,6 @@ local function registerModel(m)
     end
 end
 
--- Remove cars from registry when they despawn
 workspace.ChildRemoved:Connect(function(m)
     if VM.primary[m] then
         VM.primary[m] = nil
@@ -103,15 +103,13 @@ workspace.ChildRemoved:Connect(function(m)
         end
     end
 
-    -- If the selected car disappears, clear it
     if lastCar == m then
         lastCar = nil
         if status then status.Text = "Status: Idle" end
-        if setText then setText("Target lost.\n\nSelect a new vehicle.") end
+        if setText then setText("TARGET LOST\n\nSelect new vehicle.") end
     end
 end)
 
--- Auto-register new vehicles when they appear
 workspace.DescendantAdded:Connect(function(o)
     if o:IsA("VehicleSeat") then
         local m = o:FindFirstAncestorWhichIsA("Model")
@@ -119,13 +117,13 @@ workspace.DescendantAdded:Connect(function(o)
     end
 end)
 
--- Initial scan of workspace for vehicles
 for _,o in ipairs(workspace:GetDescendants()) do
     if o:IsA("VehicleSeat") then
         local m = o:FindFirstAncestorWhichIsA("Model")
         if m then registerModel(m) end
     end
 end
+
 -------------------------------------
 -- SECTION 3: GUI FRAMEWORK
 -------------------------------------
@@ -145,9 +143,8 @@ Instance.new("UICorner", tab).CornerRadius = UDim.new(0,16)
 local st = Instance.new("UIStroke", tab)
 st.Thickness = 2
 st.Color = CFG.Col
-st.Transparency = .2
+st.Transparency = .15
 
--- Dragging
 local drag, ds, sp
 tab.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -182,7 +179,7 @@ title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.new(1,1,1)
 title.TextScaled = true
-title.Text = "AUTEL PROPAD"
+title.Text = "AUTEL PROPAD // BLACK-OPS"
 
 local acc = Instance.new("Frame", main)
 acc.Size = UDim2.new(1,0,0,2)
@@ -190,18 +187,19 @@ acc.Position = UDim2.new(0,0,0,28)
 acc.BackgroundColor3 = CFG.Col
 
 local nav = Instance.new("Frame", main)
-nav.Size = UDim2.new(0,90,1,-36)
+nav.Size = UDim2.new(0,110,1,-36)
 nav.Position = UDim2.new(0,0,0,34)
 nav.BackgroundTransparency = 1
 
 local panel = Instance.new("Frame", main)
-panel.Size = UDim2.new(1,-100,1,-36)
-panel.Position = UDim2.new(0,100,0,34)
+panel.Size = UDim2.new(1,-120,1,-36)
+panel.Position = UDim2.new(0,120,0,34)
 panel.BackgroundColor3 = CFG.Panel
+panel.BackgroundTransparency = 0
 Instance.new("UICorner", panel).CornerRadius = UDim.new(0,10)
 
 local txt = Instance.new("TextLabel", panel)
-txt.Size = UDim2.new(1,-16,0,100)
+txt.Size = UDim2.new(1,-16,0,110)
 txt.Position = UDim2.new(0,8,0,8)
 txt.BackgroundTransparency = 1
 txt.Font = Enum.Font.Gotham
@@ -211,7 +209,7 @@ txt.TextScaled = true
 txt.RichText = true
 txt.TextXAlignment = Enum.TextXAlignment.Left
 txt.TextYAlignment = Enum.TextYAlignment.Top
-txt.Text = "Select a module on the left."
+txt.Text = "SYSTEM ONLINE\n\nSelect a module on the left."
 
 local function setText(t)
     tween(txt,{TextTransparency=1},.1):Play()
@@ -223,7 +221,7 @@ end
 
 local progressLabel = Instance.new("TextLabel", panel)
 progressLabel.Size = UDim2.new(1,-16,0,30)
-progressLabel.Position = UDim2.new(0,8,0,140)
+progressLabel.Position = UDim2.new(0,8,0,130)
 progressLabel.BackgroundTransparency = 1
 progressLabel.Font = Enum.Font.Gotham
 progressLabel.TextScaled = true
@@ -234,7 +232,7 @@ progressLabel.Text = ""
 
 local status = Instance.new("TextLabel", nav)
 status.Size = UDim2.new(1,0,0,20)
-status.Position = UDim2.new(0,0,0,(4*34)+4)
+status.Position = UDim2.new(0,0,0,(5*34)+6)
 status.BackgroundTransparency = 1
 status.Font = Enum.Font.Gotham
 status.TextScaled = true
@@ -243,8 +241,8 @@ status.TextXAlignment = Enum.TextXAlignment.Left
 status.Text = "Status: Idle"
 
 local sonarList = Instance.new("ScrollingFrame", panel)
-sonarList.Size = UDim2.new(1,-16,1,-140)
-sonarList.Position = UDim2.new(0,8,0,110)
+sonarList.Size = UDim2.new(1,-16,1,-160)
+sonarList.Position = UDim2.new(0,8,0,120)
 sonarList.BackgroundTransparency = 1
 sonarList.BorderSizePixel = 0
 sonarList.CanvasSize = UDim2.new(0,0,0,0)
@@ -254,8 +252,9 @@ sonarList.Visible = false
 local listLayout = Instance.new("UIListLayout", sonarList)
 listLayout.Padding = UDim.new(0,4)
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
 -------------------------------------
--- SECTION 4: CORE MODULES
+-- SECTION 4: CORE MODULES / HELPERS
 -------------------------------------
 
 local activeBillboard = nil
@@ -293,6 +292,34 @@ local function clearSonarUI()
     progressLabel.Text = ""
 end
 
+local function clearPanel()
+    setText(" ")
+    progressLabel.Text = ""
+
+    for _,v in ipairs(panel:GetChildren()) do
+        if v:IsA("TextButton") then
+            v:Destroy()
+        end
+    end
+
+    clearSonarUI()
+end
+
+local function moduleTransition(callback)
+    tween(panel, {BackgroundTransparency = 1}, .15):Play()
+    tween(txt, {TextTransparency = 1}, .15):Play()
+    tween(progressLabel, {TextTransparency = 1}, .15):Play()
+
+    task.wait(.16)
+
+    clearPanel()
+    callback()
+
+    tween(panel, {BackgroundTransparency = 0}, .15):Play()
+    tween(txt, {TextTransparency = 0}, .15):Play()
+    tween(progressLabel, {TextTransparency = 0}, .15):Play()
+end
+
 local function showTargetUI(car)
     if activeBillboard then activeBillboard:Destroy() end
     disconnectConn(liveUpdater)
@@ -302,18 +329,16 @@ local function showTargetUI(car)
     local p = VM.primary[car]
     if not p then return end
 
-    -- PROGRESS FIRST, NO UI YET
     local pct = 0
     progressUpdater = rs.Heartbeat:Connect(function()
         if pct < 100 then
             pct = math.min(pct + 2, 100)
             progressLabel.Text = getProgressBar(pct)
         else
-            progressLabel.Text = "<font color='rgb(0,255,0)'>COMPLETE</font>"
+            progressLabel.Text = "<font color='rgb(0,255,0)'>BREACH COMPLETE</font>"
             disconnectConn(progressUpdater)
             progressUpdater = nil
 
-            -- ONLY NOW CREATE THE BILLBOARD UI
             local bb = Instance.new("BillboardGui")
             bb.Size = UDim2.new(0,150,0,45)
             bb.AlwaysOnTop = true
@@ -330,7 +355,7 @@ local function showTargetUI(car)
 
             liveUpdater = rs.Heartbeat:Connect(function()
                 if not car.Parent then
-                    lb.Text = "Lost Target"
+                    lb.Text = "TARGET LOST"
                     return
                 end
 
@@ -368,315 +393,356 @@ local function buildVehicleList()
 end
 
 -------------------------------------------------
--- CONNECTIONS MODULE
+-- CONNECTIONS MODULE (VEHICLE ACQUISITION)
 -------------------------------------------------
 
 local function CONNECTIONS()
-    clearSonarUI()
+    moduleTransition(function()
+        status.Text = "Status: Acquisition"
 
-    local list = buildVehicleList()
-    if #list == 0 then
-        setText("CONNECTIONS MODE\n\nNo vehicles detected.")
-        return
-    end
-
-    setText("CONNECTIONS MODE\n\nSelect a target below:")
-    sonarList.Visible = true
-
-    local buttons = {}
-
-    for _,e in ipairs(list) do
-        local b = Instance.new("TextButton", sonarList)
-        b.Size = UDim2.new(1,0,0,22)
-        b.BackgroundTransparency = 1
-        b.TextColor3 = Color3.new(1,1,1)
-        b.Font = Enum.Font.Gotham
-        b.TextSize = 14
-        b.RichText = true
-        b.TextXAlignment = Enum.TextXAlignment.Left
-
-        b.Text = string.format("%s  %s  (%d studs)",
-            e.car.Name,
-            getSignalBars(e.dist),
-            math.floor(e.dist)
-        )
-
-        buttons[e.car] = b
-
-        b.MouseButton1Click:Connect(function()
-            lastCar = e.car
-            clearSonarUI()
-            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Reprogram Progression</font>"):format(e.car.Name))
-            showTargetUI(e.car)
-        end)
-    end
-
-    sonarList.CanvasSize = UDim2.new(0,0,0,#list * 26)
-
-    disconnectConn(listUpdater)
-    listUpdater = rs.Heartbeat:Connect(function()
-        local ok, r = pcall(root)
-        if not ok or not r or not r.Parent then return end
-
-        for car,button in pairs(buttons) do
-            if car and car.Parent then
-                local p = VM.primary[car]
-                if p then
-                    local d = math.floor((p.Position - r.Position).Magnitude)
-                    button.Text = string.format("%s  %s  (%d studs)",
-                        car.Name,
-                        getSignalBars(d),
-                        d
-                    )
-                end
-            else
-                button.Text = (car and car.Name or "Unknown") .. " (lost)"
-            end
+        local list = buildVehicleList()
+        if #list == 0 then
+            setText("<b>VEHICLE ACQUISITION MODE</b>\n\nNo targets detected in AO.")
+            return
         end
+
+        setText("<b>VEHICLE ACQUISITION MODE</b>\n\nSelect target from list below.")
+        sonarList.Visible = true
+
+        local buttons = {}
+
+        for _,e in ipairs(list) do
+            local b = Instance.new("TextButton", sonarList)
+            b.Size = UDim2.new(1,0,0,22)
+            b.BackgroundTransparency = 1
+            b.TextColor3 = Color3.new(1,1,1)
+            b.Font = Enum.Font.Gotham
+            b.TextSize = 14
+            b.RichText = true
+            b.TextXAlignment = Enum.TextXAlignment.Left
+
+            b.Text = string.format("%s  %s  (%d studs)",
+                e.car.Name,
+                getSignalBars(e.dist),
+                math.floor(e.dist)
+            )
+
+            buttons[e.car] = b
+
+            b.MouseButton1Click:Connect(function()
+                lastCar = e.car
+                clearSonarUI()
+                setText(("<b>TARGET LOCKED</b>\n\n%s\n\nReprogram sequence ready.")
+                    :format(e.car.Name))
+                status.Text = "Status: Target Locked"
+                showTargetUI(e.car)
+            end)
+        end
+
+        sonarList.CanvasSize = UDim2.new(0,0,0,#list * 26)
+
+        disconnectConn(listUpdater)
+        listUpdater = rs.Heartbeat:Connect(function()
+            local ok, r = pcall(root)
+            if not ok or not r or not r.Parent then return end
+
+            for car,button in pairs(buttons) do
+                if car and car.Parent then
+                    local p = VM.primary[car]
+                    if p then
+                        local d = math.floor((p.Position - r.Position).Magnitude)
+                        button.Text = string.format("%s  %s  (%d studs)",
+                            car.Name,
+                            getSignalBars(d),
+                            d
+                        )
+                    end
+                else
+                    button.Text = (car and car.Name or "Unknown") .. " (lost)"
+                end
+            end
+        end)
     end)
 end
 
 -------------------------------------------------
--- REPROGRAM MODULE
+-- REPROGRAM MODULE (ECU OVERRIDE)
 -------------------------------------------------
+
 local function REPROGRAM()
-    clearSonarUI()
+    moduleTransition(function()
+        disconnectConn(liveUpdater)
+        disconnectConn(listUpdater)
+        disconnectConn(progressUpdater)
 
-    if not lastCar or not lastCar.Parent then
-        setText("REPROGRAM MODE\n\nNo target selected.\nUse Connections first.")
-        status.Text = "Status: Idle"
-        return
-    end
-
-    for _, d in ipairs(lastCar:GetDescendants()) do
-        if d:IsA("VehicleSeat") or d:IsA("Seat") then
-            d.Disabled = false
+        if not lastCar or not lastCar.Parent then
+            setText("<b>ECU OVERRIDE MODULE</b>\n\nNo target selected.\nAcquire target first.")
+            status.Text = "Status: Idle"
+            return
         end
 
-        if d:IsA("BasePart") then
-            d.Anchored = false
+        setText(("<b>ECU OVERRIDE MODULE</b>\n\nVehicle: %s\n\nClearing client-side immobilizer flags...")
+            :format(lastCar.Name))
+        status.Text = "Status: Override"
+
+        for _, d in ipairs(lastCar:GetDescendants()) do
+            if d:GetAttribute("EngineDisabled") ~= nil then
+                d:SetAttribute("EngineDisabled", false)
+            end
+
+            if d:GetAttribute("Immobilized") ~= nil then
+                d:SetAttribute("Immobilized", false)
+            end
         end
 
-        if d:GetAttribute("EngineDisabled") ~= nil then
-            d:SetAttribute("EngineDisabled", false)
-        end
-
-        if d:GetAttribute("Immobilized") ~= nil then
-            d:SetAttribute("Immobilized", false)
-        end
-    end
-
-    setText(("REPROGRAM MODE\n\nVehicle: %s\nStatus: Key Stolen."):format(lastCar.Name))
-    status.Text = "Status: Spoofed"
+        progressLabel.Text = getProgressBar(100)
+        setText(("<b>ECU OVERRIDE MODULE</b>\n\nVehicle: %s\n\n<font color='rgb(0,255,0)'>CLIENT OVERRIDE COMPLETE</font>")
+            :format(lastCar.Name))
+        status.Text = "Status: Override Complete"
+    end)
 end
+
 -------------------------------------------------
--- SCAN MODULE
+-- SCAN MODULE (TACTICAL SCAN)
 -------------------------------------------------
 
 local function SCAN()
-    clearSonarUI()
+    moduleTransition(function()
+        status.Text = "Status: Scanning"
 
-    local list = buildVehicleList()
-    if #list == 0 then
-        setText("SCAN MODE\n\nNo vehicles detected.")
-        status.Text = "Status: Scan complete (0)"
-        return
-    end
+        local list = buildVehicleList()
+        if #list == 0 then
+            setText("<b>TACTICAL SCAN</b>\n\nNo vehicles detected in AO.")
+            status.Text = "Status: Scan complete (0)"
+            return
+        end
 
-    local count = #list
-    local nearest = list[1]
-    local farthest = list[#list]
+        local count = #list
+        local nearest = list[1]
+        local farthest = list[#list]
 
-    local sum = 0
-    for _,e in ipairs(list) do
-        sum += e.dist
-    end
+        local sum = 0
+        for _,e in ipairs(list) do
+            sum += e.dist
+        end
 
-    local avg = math.floor(sum / count)
+        local avg = math.floor(sum / count)
 
-    local text = string.format(
-        "SCAN MODE\n\nVehicles detected: %d\n\nNearest: %s (%.0f studs)\nFarthest: %s (%.0f studs)\nAverage distance: %d studs",
-        count,
-        nearest.car.Name, nearest.dist,
-        farthest.car.Name, farthest.dist,
-        avg
-    )
+        local text = string.format(
+            "<b>TACTICAL SCAN</b>\n\nTargets detected: %d\n\nNearest: %s (%.0f studs)\nFarthest: %s (%.0f studs)\nAverage distance: %d studs",
+            count,
+            nearest.car.Name, nearest.dist,
+            farthest.car.Name, farthest.dist,
+            avg
+        )
 
-    setText(text)
-    status.Text = "Status: Scan complete ("..count..")"
+        setText(text)
+        status.Text = "Status: Scan complete ("..count..")"
+    end)
 end
+
 -------------------------------------
--- SECTION 5: SPOOF KEY MODULE
+-- SECTION 5: SPOOF KEY MODULE (BLACK-OPS)
 -------------------------------------
 
 local function SPOOFKEY()
-    clearSonarUI()
-
-    if not lastCar or not lastCar.Parent then
-        setText("SPOOF KEY MODE\n\nNo target selected.\nUse Connections first.")
-        status.Text = "Status: Idle"
-        return
-    end
-
-    local p = VM.primary[lastCar]
-    if not p then
-        setText("SPOOF KEY MODE\n\nVehicle missing primary part.")
-        return
-    end
-
-    -- distance check
-    local ok, r = pcall(root)
-    if not ok or not r or not r.Parent then return end
-
-    local dist = (p.Position - r.Position).Magnitude
-    if dist > 120 then
-        setText("SPOOF KEY MODE\n\nOut of range.\nMove closer to the vehicle.")
-        status.Text = "Status: Out of range"
-        return
-    end
-
-    setText(("SPOOF KEY MODE\n\nVehicle: %s\nRange OK (%d studs)\n\nSelect an action:")
-        :format(lastCar.Name, math.floor(dist)))
-    status.Text = "Status: Key Fob Ready"
-
-    -- Create action buttons inside panel
-    local function makeAction(name, order, callback)
-        local b = Instance.new("TextButton", panel)
-        b.Size = UDim2.new(1,-16,0,30)
-        b.Position = UDim2.new(0,8,0,180 + (order * 34))
-        b.BackgroundColor3 = Color3.fromRGB(20,20,26)
-        b.Font = Enum.Font.GothamBold
-        b.TextColor3 = Color3.fromRGB(240,240,245)
-        b.TextScaled = true
-        b.Text = name
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
-
-        b.MouseEnter:Connect(function()
-            tween(b,{BackgroundColor3=CFG.Col},.15):Play()
-        end)
-
-        b.MouseLeave:Connect(function()
-            tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
-        end)
-
-        b.MouseButton1Click:Connect(callback)
-    end
-
-    -------------------------------------------------
-    -- ACTION: LOCK DOORS
-    -------------------------------------------------
-    makeAction("Lock Doors",1,function()
-        for _,d in ipairs(lastCar:GetDescendants()) do
-            if d:IsA("BasePart") then
-                pcall(function()
-                    d:SetAttribute("Locked", true)
-                end)
-            end
+    moduleTransition(function()
+        if not lastCar or not lastCar.Parent then
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nNo target selected.\nAcquire target first.")
+            status.Text = "Status: Idle"
+            return
         end
 
-        setText("SPOOF KEY MODE\n\nDoors Locked.\nLights flashed.")
-        status.Text = "Status: Locked"
+        local p = VM.primary[lastCar]
+        if not p then
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nVehicle missing primary part.")
+            return
+        end
 
-        -- flash lights
-        for _,l in ipairs(lastCar:GetDescendants()) do
-            if l:IsA("Light") then
-                pcall(function()
-                    l.Enabled = true
-                    task.delay(.25,function()
-                        l.Enabled = false
+        local ok, r = pcall(root)
+        if not ok or not r or not r.Parent then return end
+
+        local dist = (p.Position - r.Position).Magnitude
+        if dist > 120 then
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nOut of range.\nClose distance to target.")
+            status.Text = "Status: Out of range"
+            return
+        end
+
+        setText(("<b>KEYFOB SPOOF SUITE</b>\n\nVehicle: %s\nRange OK (%d studs)\n\nSelect operation:")
+            :format(lastCar.Name, math.floor(dist)))
+        status.Text = "Status: Key Suite Ready"
+
+        local function makeAction(name, order, callback)
+            local b = Instance.new("TextButton", panel)
+            b.Size = UDim2.new(1,-16,0,30)
+            b.Position = UDim2.new(0,8,0,170 + (order * 34))
+            b.BackgroundColor3 = Color3.fromRGB(15,15,22)
+            b.Font = Enum.Font.GothamBold
+            b.TextColor3 = Color3.fromRGB(240,240,245)
+            b.TextScaled = true
+            b.Text = name
+            Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+            b.MouseEnter:Connect(function()
+                tween(b,{BackgroundColor3=CFG.Col},.15):Play()
+            end)
+
+            b.MouseLeave:Connect(function()
+                tween(b,{BackgroundColor3=Color3.fromRGB(15,15,22)},.15):Play()
+            end)
+
+            b.MouseButton1Click:Connect(callback)
+        end
+
+        -------------------------------------------------
+        -- ACTION: LOCK DOORS
+        -------------------------------------------------
+        makeAction("Lock Doors",1,function()
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nTransmitting lock command...")
+            status.Text = "Status: Locking"
+
+            for _,d in ipairs(lastCar:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    pcall(function()
+                        d:SetAttribute("Locked", true)
                     end)
-                end)
-            end
-        end
-    end)
-
-    -------------------------------------------------
-    -- ACTION: UNLOCK DOORS
-    -------------------------------------------------
-    makeAction("Unlock Doors",2,function()
-        for _,d in ipairs(lastCar:GetDescendants()) do
-            if d:IsA("BasePart") then
-                pcall(function()
-                    d:SetAttribute("Locked", false)
-                end)
-            end
-        end
-
-        setText("SPOOF KEY MODE\n\nDoors Unlocked.")
-        status.Text = "Status: Unlocked"
-    end)
-
-    -------------------------------------------------
-    -- ACTION: HONK HORN
-    -------------------------------------------------
-    makeAction("Honk Horn",3,function()
-        for _,s in ipairs(lastCar:GetDescendants()) do
-            if s:IsA("Sound") and s.Name:lower():find("horn") then
-                pcall(function()
-                    s:Play()
-                end)
-            end
-        end
-
-        setText("SPOOF KEY MODE\n\nHorn Activated.")
-        status.Text = "Status: Horn"
-    end)
-
-    -------------------------------------------------
-    -- ACTION: FLASH LIGHTS
-    -------------------------------------------------
-    makeAction("Flash Lights",4,function()
-        for _,l in ipairs(lastCar:GetDescendants()) do
-            if l:IsA("Light") then
-                pcall(function()
-                    l.Enabled = true
-                    task.delay(.3,function()
-                        l.Enabled = false
-                    end)
-                end)
-            end
-        end
-
-        setText("SPOOF KEY MODE\n\nLights Flashed.")
-        status.Text = "Status: Flash"
-    end)
-
-    -------------------------------------------------
-    -- ACTION: PANIC MODE
-    -------------------------------------------------
-    makeAction("Panic Mode",5,function()
-        setText("SPOOF KEY MODE\n\nPanic Mode Activated!")
-        status.Text = "Status: PANIC"
-
-        local t = 0
-        local panicConn
-        panicConn = rs.Heartbeat:Connect(function(dt)
-            t += dt
-            if t > 3 then
-                panicConn:Disconnect()
-                status.Text = "Status: Idle"
-                return
+                end
             end
 
-            -- random flashing
+            task.wait(.3)
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nDoors locked.\nVisual confirmation triggered.")
+            status.Text = "Status: Locked"
+
             for _,l in ipairs(lastCar:GetDescendants()) do
                 if l:IsA("Light") then
                     pcall(function()
-                        l.Enabled = (math.random() > .5)
+                        l.Enabled = true
+                        task.delay(.25,function()
+                            l.Enabled = false
+                        end)
+                    end)
+                end
+            end
+        end)
+
+        -------------------------------------------------
+        -- ACTION: UNLOCK DOORS (Simulated CAN Unlock)
+        -------------------------------------------------
+        makeAction("Unlock Doors",2,function()
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nInitiating CAN handshake...")
+            status.Text = "Status: CAN Negotiation"
+            task.wait(.4)
+
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nAuthenticating with BCM...\nRolling code exchange in progress...")
+            task.wait(.6)
+
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nInjecting unlock frame...\n0x1A2 → 0x3F1")
+            task.wait(.5)
+
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nActuator response pending...\nAwaiting confirmation...")
+            task.wait(.5)
+
+            for _,d in ipairs(lastCar:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    pcall(function()
+                        d:SetAttribute("Locked", false)
                     end)
                 end
             end
 
-            -- random horn bursts
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\n<font color='rgb(0,255,0)'>UNLOCK SUCCESS</font>\nCAN session terminated.")
+            status.Text = "Status: Unlocked"
+
+            for _,l in ipairs(lastCar:GetDescendants()) do
+                if l:IsA("Light") then
+                    pcall(function()
+                        l.Enabled = true
+                        task.delay(.25,function()
+                            l.Enabled = false
+                        end)
+                    end)
+                end
+            end
+        end)
+
+        -------------------------------------------------
+        -- ACTION: HONK HORN
+        -------------------------------------------------
+        makeAction("Honk Horn",3,function()
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nTriggering horn actuator...")
+            status.Text = "Status: Horn"
+
             for _,s in ipairs(lastCar:GetDescendants()) do
                 if s:IsA("Sound") and s.Name:lower():find("horn") then
-                    if math.random() > .8 then
+                    pcall(function()
+                        s:Play()
+                    end)
+                end
+            end
+
+            task.wait(.3)
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nHorn activation complete.")
+        end)
+
+        -------------------------------------------------
+        -- ACTION: FLASH LIGHTS
+        -------------------------------------------------
+        makeAction("Flash Lights",4,function()
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nFlashing external lighting...")
+            status.Text = "Status: Flash"
+
+            for _,l in ipairs(lastCar:GetDescendants()) do
+                if l:IsA("Light") then
+                    pcall(function()
+                        l.Enabled = true
+                        task.delay(.3,function()
+                            l.Enabled = false
+                        end)
+                    end)
+                end
+            end
+
+            task.wait(.3)
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nFlash sequence complete.")
+        end)
+
+        -------------------------------------------------
+        -- ACTION: PANIC MODE
+        -------------------------------------------------
+        makeAction("Panic Mode",5,function()
+            setText("<b>KEYFOB SPOOF SUITE</b>\n\nPanic protocol engaged.")
+            status.Text = "Status: PANIC"
+
+            local t = 0
+            local panicConn
+            panicConn = rs.Heartbeat:Connect(function(dt)
+                t += dt
+                if t > 3 then
+                    panicConn:Disconnect()
+                    status.Text = "Status: Idle"
+                    setText("<b>KEYFOB SPOOF SUITE</b>\n\nPanic protocol disengaged.")
+                    return
+                end
+
+                for _,l in ipairs(lastCar:GetDescendants()) do
+                    if l:IsA("Light") then
                         pcall(function()
-                            s:Play()
+                            l.Enabled = (math.random() > .5)
                         end)
                     end
                 end
-            end
+
+                for _,s in ipairs(lastCar:GetDescendants()) do
+                    if s:IsA("Sound") and s.Name:lower():find("horn") then
+                        if math.random() > .8 then
+                            pcall(function()
+                                s:Play()
+                            end)
+                        end
+                    end
+                end
+            end)
         end)
     end)
 end
@@ -686,14 +752,20 @@ end
 -------------------------------------
 
 local function EXIT()
-    clearSonarUI()
-    lastCar = nil
+    moduleTransition(function()
+        clearSonarUI()
+        lastCar = nil
 
-    status.Text = "Status: Idle"
-    setText("Session closed.\n\nPress T or type !autel to reopen.")
+        status.Text = "Status: Idle"
+        setText("<b>SYSTEM DISENGAGE PROTOCOL</b>\n\nSession closed.\nPress T or type !autel to re-engage.")
 
-    tab.Visible = false
+        tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
+        task.delay(.25, function()
+            tab.Visible = false
+        end)
+    end)
 end
+
 -------------------------------------
 -- SECTION 8: BUTTON CREATION
 -------------------------------------
@@ -702,7 +774,7 @@ local function btn(name, order, callback)
     local b = Instance.new("TextButton", nav)
     b.Size = UDim2.new(1,0,0,30)
     b.Position = UDim2.new(0,0,0,(order-1)*34)
-    b.BackgroundColor3 = Color3.fromRGB(20,20,26)
+    b.BackgroundColor3 = Color3.fromRGB(15,15,22)
     b.Font = Enum.Font.GothamBold
     b.TextColor3 = Color3.fromRGB(240,240,245)
     b.TextScaled = true
@@ -714,7 +786,7 @@ local function btn(name, order, callback)
     end)
 
     b.MouseLeave:Connect(function()
-        tween(b,{BackgroundColor3=Color3.fromRGB(20,20,26)},.15):Play()
+        tween(b,{BackgroundColor3=Color3.fromRGB(15,15,22)},.15):Play()
     end)
 
     b.MouseButton1Click:Connect(function()
@@ -722,12 +794,12 @@ local function btn(name, order, callback)
     end)
 end
 
--- BUTTON ORDER (FINALIZED)
-btn("Connections",   1, CONNECTIONS)
-btn("Reprogram",     2, REPROGRAM)
-btn("Scan",          3, SCAN)
-btn("Spoof Key",     4, SPOOFKEY)
-btn("Exit",          5, EXIT)
+btn("Acquire",   1, CONNECTIONS)
+btn("ECU Override", 2, REPROGRAM)
+btn("Scan",      3, SCAN)
+btn("Key Suite", 4, SPOOFKEY)
+btn("Disengage", 5, EXIT)
+
 -------------------------------------
 -- SECTION 9: INPUT HANDLING
 -------------------------------------
@@ -737,25 +809,22 @@ local function openTablet()
     tween(tab, {Position = CFG.Pos}, .25):Play()
 
     if lastCar and lastCar.Parent then
-        setText(("Reconnected to %s.\n\nSelect a module."):format(lastCar.Name))
+        setText(("SYSTEM ONLINE\n\nReconnected to %s.\nSelect module.")
+            :format(lastCar.Name))
         status.Text = "Status: Ready"
     else
-        setText("AUTEL PROPAD READY\n\nSelect a module on the left.")
+        setText("SYSTEM ONLINE\n\nSelect module on the left.")
         status.Text = "Status: Idle"
     end
 end
 
 local function closeTablet()
-disconnectConn(liveUpdater)
-disconnectConn(listUpdater)
-disconnectConn(progressUpdater)
     tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
     task.delay(.25, function()
         tab.Visible = false
     end)
 end
 
--- KEYBIND TOGGLE
 uis.InputBegan:Connect(function(i, gpe)
     if gpe then return end
     if i.KeyCode == CFG.Key then
@@ -767,7 +836,6 @@ uis.InputBegan:Connect(function(i, gpe)
     end
 end)
 
--- CHAT COMMAND TOGGLE
 plr.Chatted:Connect(function(msg)
     msg = msg:lower()
     if msg == CFG.Cmd then
