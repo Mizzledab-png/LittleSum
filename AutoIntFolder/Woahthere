@@ -963,39 +963,3 @@ plr.Chatted:Connect(function(msg)
         end
     end
 end)
--------------------------------------
--- SECTION 10: MOBILE BUTTON
--------------------------------------
-
-if CFG.UseMobileButton then
-    local mb = Instance.new("TextButton", gui)
-    mb.Size = UDim2.new(0,120,0,40)
-    mb.Position = UDim2.new(0.5,-60,1,-60)
-    mb.AnchorPoint = Vector2.new(0.5,1)
-    mb.BackgroundColor3 = CFG.Col
-    mb.Text = "AUTEL"
-    mb.TextScaled = true
-    mb.Font = Enum.Font.GothamBold
-    mb.TextColor3 = Color3.new(1,1,1)
-    Instance.new("UICorner", mb).CornerRadius = UDim.new(0,12)
-
-    mb.MouseButton1Click:Connect(function()
-        if tab.Visible then
-            tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
-            task.delay(.25, function()
-                tab.Visible = false
-            end)
-        else
-            tab.Visible = true
-            tween(tab, {Position = CFG.Pos}, .25):Play()
-
-            if lastCar and lastCar.Parent then
-                setText(("Reconnected to %s.\n\nSelect a module."):format(lastCar.Name))
-                status.Text = "Status: Ready"
-            else
-                setText("AUTEL PROPAD READY\n\nSelect a module on the left.")
-                status.Text = "Status: Idle"
-            end
-        end
-    end)
-end
