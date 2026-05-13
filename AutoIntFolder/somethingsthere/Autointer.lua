@@ -7,6 +7,7 @@ local player = Players.LocalPlayer
 
 -- CONFIG
 local AUTO_DISTANCE = 5
+local DELAY = 0.5 -- repeat delay
 
 -- STATE
 local autoEnabled = true
@@ -17,12 +18,13 @@ local hrp = nil
 -- Reused tables (never recreated)
 local activePrompts = {}
 local promptCooldown = {}
+local nextFireTime = {}
 
--- Predefined strings (no new strings created at runtime)
+-- Predefined strings
 local STATUS_ON = "Auto Prompt: ON"
 local STATUS_OFF = "Auto Prompt: OFF"
 
--- GUI creation (only called on start/respawn)
+-- GUI creation
 local function createGUI()
     if screenGui ~= nil then
         screenGui:Destroy()
@@ -30,10 +32,7 @@ local function createGUI()
         statusLabel = nil
     end
 
-    local pg = player:FindFirstChild("PlayerGui")
-    if not pg then
-        pg = player:WaitForChild("PlayerGui")
-    end
+    local pg = player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui")
 
     local gui = Instance.new("ScreenGui")
     gui.Name = "AutoPromptGUI"
@@ -56,7 +55,7 @@ local function createGUI()
 end
 
 local function updateStatus()
-    if statusLabel ~= nil then
+    if statusLabel then
         statusLabel.Text = autoEnabled and STATUS_ON or STATUS_OFF
     end
 end
@@ -64,10 +63,10 @@ end
 -- Fast prompt position resolver
 local function getPromptPosition(prompt)
     local parent = prompt.Parent
-    while parent ~= nil and not parent:IsA("BasePart") do
+    while parent and not parent:IsA("BasePart") do
         parent = parent.Parent
     end
-    return parent and parent.Position or nil
+    return parent and parent.Position
 end
 
 -- EVENTS
@@ -80,14 +79,22 @@ end)
 ProximityPromptService.PromptHidden:Connect(function(prompt)
     activePrompts[prompt] = nil
     promptCooldown[prompt] = nil
+    nextFireTime[prompt] = nil
+end)
+
+-- Reset cooldown after prompt completes
+ProximityPromptService.PromptTriggered:Connect(function(prompt, plr)
+    if plr == player then
+        promptCooldown[prompt] = nil
+    end
 end)
 
 player.CharacterAdded:Connect(function(char)
     hrp = char:WaitForChild("HumanoidRootPart")
 
-    -- Clear tables without reallocating
     for k in pairs(activePrompts) do activePrompts[k] = nil end
     for k in pairs(promptCooldown) do promptCooldown[k] = nil end
+    for k in pairs(nextFireTime) do nextFireTime[k] = nil end
 
     createGUI()
     updateStatus()
@@ -101,35 +108,38 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- MAIN LOOP (zero allocations)
+-- MAIN LOOP
+local fire = fireproximityprompt
+local maxDist = AUTO_DISTANCE
+
 RunService.Heartbeat:Connect(function()
     if not autoEnabled then return end
     local root = hrp
-    if root == nil then return end
+    if not root then return end
 
     local rootPos = root.Position
-    local maxDist = AUTO_DISTANCE
+    local now = tick()
 
-    for prompt in pairs(activePrompts) do
+    local prompt = next(activePrompts)
+    while prompt do
         if prompt.Enabled then
             local pos = getPromptPosition(prompt)
-            if pos ~= nil then
-                local dist = (rootPos - pos).Magnitude
-
-                if dist <= maxDist then
-                    -- Only fire once per approach
-                    if not promptCooldown[prompt] then
-                        promptCooldown[prompt] = true
-                        fireproximityprompt(prompt)
+            if pos then
+                if (rootPos - pos).Magnitude <= maxDist then
+                    local nf = nextFireTime[prompt]
+                    if not nf or now >= nf then
+                        if not promptCooldown[prompt] then
+                            promptCooldown[prompt] = true
+                            nextFireTime[prompt] = now + DELAY
+                            fire(prompt)
+                        end
                     end
                 else
-                    -- Reset cooldown when leaving range
-                    if promptCooldown[prompt] then
-                        promptCooldown[prompt] = nil
-                    end
+                    promptCooldown[prompt] = nil
                 end
             end
         end
+        prompt = next(activePrompts, prompt)
     end
 end)
 
