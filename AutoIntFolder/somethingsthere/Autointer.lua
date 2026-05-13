@@ -7,7 +7,7 @@ local player = Players.LocalPlayer
 
 -- CONFIG
 local AUTO_DISTANCE = 5
-local DELAY = 0.2 -- repeat delay
+local DELAY = 2 -- wait 2 seconds AFTER completion
 
 -- STATE
 local autoEnabled = true
@@ -15,9 +15,9 @@ local screenGui = nil
 local statusLabel = nil
 local hrp = nil
 
--- Reused tables (never recreated)
+-- Reused tables
 local activePrompts = {}
-local promptCooldown = {}
+local waitingForCompletion = {}
 local nextFireTime = {}
 
 -- Predefined strings
@@ -74,18 +74,28 @@ end
 ProximityPromptService.PromptShown:Connect(function(prompt)
     prompt.MaxActivationDistance = AUTO_DISTANCE
     activePrompts[prompt] = true
+
+    -- COMPLETION METHOD #3: Enabled flips back to true
+    prompt:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if prompt.Enabled then
+            waitingForCompletion[prompt] = nil
+            nextFireTime[prompt] = tick() + DELAY
+        end
+    end)
 end)
 
 ProximityPromptService.PromptHidden:Connect(function(prompt)
+    -- COMPLETION METHOD #2: Hidden = complete
     activePrompts[prompt] = nil
-    promptCooldown[prompt] = nil
-    nextFireTime[prompt] = nil
+    waitingForCompletion[prompt] = nil
+    nextFireTime[prompt] = tick() + DELAY
 end)
 
--- Reset cooldown after prompt completes (if the prompt supports it)
+-- COMPLETION METHOD #1: PromptTriggered
 ProximityPromptService.PromptTriggered:Connect(function(prompt, plr)
     if plr == player then
-        promptCooldown[prompt] = nil
+        waitingForCompletion[prompt] = nil
+        nextFireTime[prompt] = tick() + DELAY
     end
 end)
 
@@ -93,7 +103,7 @@ player.CharacterAdded:Connect(function(char)
     hrp = char:WaitForChild("HumanoidRootPart")
 
     for k in pairs(activePrompts) do activePrompts[k] = nil end
-    for k in pairs(promptCooldown) do promptCooldown[k] = nil end
+    for k in pairs(waitingForCompletion) do waitingForCompletion[k] = nil end
     for k in pairs(nextFireTime) do nextFireTime[k] = nil end
 
     createGUI()
@@ -127,21 +137,21 @@ RunService.Heartbeat:Connect(function()
             if pos then
                 if (rootPos - pos).Magnitude <= maxDist then
 
-                    -- Reset cooldown when delay expires
-                    local nf = nextFireTime[prompt]
-                    if nf and now >= nf then
-                        promptCooldown[prompt] = nil
-                    end
+                    -- If still waiting for completion, do nothing
+                    if not waitingForCompletion[prompt] then
 
-                    -- Fire if ready
-                    if not promptCooldown[prompt] then
-                        nextFireTime[prompt] = now + DELAY
-                        promptCooldown[prompt] = true
-                        fire(prompt)
+                        -- Check if cooldown expired
+                        local nf = nextFireTime[prompt]
+                        if not nf or now >= nf then
+                            waitingForCompletion[prompt] = true
+                            nextFireTime[prompt] = nil
+                            fire(prompt)
+                        end
                     end
 
                 else
-                    promptCooldown[prompt] = nil
+                    waitingForCompletion[prompt] = nil
+                    nextFireTime[prompt] = nil
                 end
             end
         end
