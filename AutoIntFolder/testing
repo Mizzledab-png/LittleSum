@@ -13,8 +13,6 @@ local MAX_SCREEN_DIST = 200
 local CAMERA_SMOOTHNESS = 0.9
 local LEAD_TIME = 0.1
 
-local AIM_OFFSET = Vector3.new(0, 0.5, 0) -- 1.5 is an upward offset allowing you to aim for the head, decrease it to aim lower 0 is torso
-
 -- Find closest player to cursor
 local function getClosestPlayerToCursor()
     local mousePos = UserInputService:GetMouseLocation()
@@ -84,15 +82,25 @@ end)
 
 -- Camera tracking
 RunService.RenderStepped:Connect(function(dt)
-    if holdingAlt and locked and enemy and enemy:FindFirstChild("HumanoidRootPart") then
+    if locked and holdingAlt and enemy and enemy:FindFirstChild("HumanoidRootPart") then
         local hrp = enemy.HumanoidRootPart
+        local head = enemy:FindFirstChild("Head")
 
-        local predictedPos = hrp.Position + hrp.Velocity * LEAD_TIME + AIM_OFFSET
+        -- Lean-aware head tracking
+        local targetPos
+        if head then
+            targetPos = head.Position
+        else
+            targetPos = hrp.Position + Vector3.new(0, 1.6, 0)
+        end
 
+        -- Prediction
+        local predictedPos =
+            targetPos +
+            hrp.AssemblyLinearVelocity * LEAD_TIME
+
+        -- Camera rotation
         local targetCF = CFrame.new(cam.CFrame.Position, predictedPos)
         cam.CFrame = cam.CFrame:Lerp(targetCF, CAMERA_SMOOTHNESS)
-    else
-        locked = false
-        enemy = nil
     end
 end)
