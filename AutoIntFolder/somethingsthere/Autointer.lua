@@ -82,7 +82,7 @@ ProximityPromptService.PromptHidden:Connect(function(prompt)
     nextFireTime[prompt] = nil
 end)
 
--- Reset cooldown after prompt completes
+-- Reset cooldown after prompt completes (if the prompt supports it)
 ProximityPromptService.PromptTriggered:Connect(function(prompt, plr)
     if plr == player then
         promptCooldown[prompt] = nil
@@ -126,14 +126,20 @@ RunService.Heartbeat:Connect(function()
             local pos = getPromptPosition(prompt)
             if pos then
                 if (rootPos - pos).Magnitude <= maxDist then
+
+                    -- Reset cooldown when delay expires
                     local nf = nextFireTime[prompt]
-                    if not nf or now >= nf then
-                        if not promptCooldown[prompt] then
-                            promptCooldown[prompt] = true
-                            nextFireTime[prompt] = now + DELAY
-                            fire(prompt)
-                        end
+                    if nf and now >= nf then
+                        promptCooldown[prompt] = nil
                     end
+
+                    -- Fire if ready
+                    if not promptCooldown[prompt] then
+                        nextFireTime[prompt] = now + DELAY
+                        promptCooldown[prompt] = true
+                        fire(prompt)
+                    end
+
                 else
                     promptCooldown[prompt] = nil
                 end
