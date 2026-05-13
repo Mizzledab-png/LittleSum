@@ -11,7 +11,7 @@ local holdingAlt = false
 
 local MAX_SCREEN_DIST = 200
 local CAMERA_SMOOTHNESS = 0.9
-local LEAD_TIME = 0.04
+local LEAD_TIME = 0.08
 
 local AIM_OFFSET = Vector3.new(0, 1.5, 0) -- 1.5 is an upward offset allowing you to aim for the head, decrease it to aim lower 0 is torso
 
