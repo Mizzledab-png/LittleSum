@@ -29,10 +29,10 @@ local function isValidCarName(name)
 end
 
 -- Prebuilt signal bar strings to avoid rebuilding patterns
-local SIGNAL_STRONG   = "<font color='rgb(0,255,0)'>▂▃▅</font>"
-local SIGNAL_MEDIUM_2 = "<font color='rgb(255,255,0)'>▂▃</font>"
-local SIGNAL_MEDIUM_1 = "<font color='rgb(255,255,0)'>▂</font>"
-local SIGNAL_WEAK     = "<font color='rgb(255,0,0)'>▂</font>"
+local SIGNAL_STRONG   = "<font color='rgb(0,255,0)'>. ˒﹚)</font>"
+local SIGNAL_MEDIUM_2 = "<font color='rgb(255,255,0)'>. ˒﹚</font>"
+local SIGNAL_MEDIUM_1 = "<font color='rgb(255,255,0)'>. ˒</font>"
+local SIGNAL_WEAK     = "<font color='rgb(255,0,0)'>.</font>"
 
 local function getSignalBars(dist)
     if dist <= 30 then
