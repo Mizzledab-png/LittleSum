@@ -7,7 +7,7 @@ local player = Players.LocalPlayer
 
 -- CONFIG
 local AUTO_DISTANCE = 5
-local DELAY = 0.5 -- repeat delay
+local DELAY = 0.2 -- repeat delay
 
 -- STATE
 local autoEnabled = true
