@@ -1,3 +1,4 @@
+--// Services
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
@@ -5,15 +6,29 @@ local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 local cam = workspace.CurrentCamera
 
+--// Lock State
 local locked = false
 local enemy = nil
 local holdingAlt = false
 
+--// Precision Tracking Tuning (No Jerk)
 local MAX_SCREEN_DIST = 200
-local CAMERA_SMOOTHNESS = 0.9
-local LEAD_TIME = 0.05
+local CAMERA_SMOOTHNESS = 0.14
+local LEAD_TIME = 0.25
+local SMOOTH_FACTOR = 25
+local STRAFE_BIAS = 2
 
--- Find closest player to cursor
+--// Prediction State (No Jerk)
+local lastVel = nil
+local accel = Vector3.zero
+local smoothPredicted = nil
+
+local function resetPredictionState()
+    smoothPredicted = nil
+    lastVel = nil
+end
+
+--// Closest Player to Cursor
 local function getClosestPlayerToCursor()
     local mousePos = UserInputService:GetMouseLocation()
     local closest = nil
@@ -37,7 +52,7 @@ local function getClosestPlayerToCursor()
     return closest
 end
 
--- Auto-unlock logic
+--// Auto-Unlock
 local function bindAutoUnlock(character)
     if not character then return end
 
@@ -46,6 +61,7 @@ local function bindAutoUnlock(character)
         hum.Died:Connect(function()
             locked = false
             enemy = nil
+            resetPredictionState()
         end)
     end
 
@@ -53,18 +69,19 @@ local function bindAutoUnlock(character)
         if child.Name == "HumanoidRootPart" then
             locked = false
             enemy = nil
+            resetPredictionState()
         end
     end)
 end
 
--- Detect holding Left Alt
+--// Input Handling
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
 
     if input.KeyCode == Enum.KeyCode.LeftAlt then
         holdingAlt = true
-
         enemy = getClosestPlayerToCursor()
+
         if enemy then
             locked = true
             bindAutoUnlock(enemy)
@@ -77,27 +94,73 @@ UserInputService.InputEnded:Connect(function(input)
         holdingAlt = false
         locked = false
         enemy = nil
+        resetPredictionState()
     end
 end)
 
--- Camera tracking
+--// Smoothing
+local function smoothPrediction(dt, rawTarget)
+    if not smoothPredicted then
+        smoothPredicted = rawTarget
+        return rawTarget
+    end
+
+    local alpha = 1 - math.exp(-SMOOTH_FACTOR * dt)
+    smoothPredicted = smoothPredicted:Lerp(rawTarget, alpha)
+
+    return smoothPredicted
+end
+
+--// Precision Tracking Loop (No Jerk)
 RunService.RenderStepped:Connect(function(dt)
     if locked and holdingAlt and enemy and enemy:FindFirstChild("HumanoidRootPart") then
+        
         local hrp = enemy.HumanoidRootPart
         local head = enemy:FindFirstChild("Head")
+        local targetPos = head and head.Position or (hrp.Position + Vector3.new(0, 1.6, 0))
 
-        -- Lean-aware head tracking
-        local targetPos
-        if head then
-            targetPos = head.Position
-        else
-            targetPos = hrp.Position + Vector3.new(0, 1.6, 0)
+        -- RAW velocity
+        local vel = hrp.AssemblyLinearVelocity
+
+        -- Tight vertical clamp for precision
+        local verticalVel = math.clamp(vel.Y, -20, 20)
+
+        -- Precision strafe bias
+        local camLook = cam.CFrame.LookVector
+        local lateralVel = vel - (vel:Dot(camLook) * camLook)
+        lateralVel *= STRAFE_BIAS
+
+        local biasedVel = Vector3.new(
+            lateralVel.X,
+            verticalVel,
+            lateralVel.Z
+        )
+
+        -- Acceleration (raw)
+        if lastVel then
+            accel = (vel - lastVel) / dt
         end
 
-        -- Prediction
-        local predictedPos =
+        -- Reduce vertical accel influence
+        accel = Vector3.new(accel.X, accel.Y * 0.20, accel.Z)
+
+        lastVel = vel
+
+        -- Second‑order prediction (NO jerk)
+        local t = LEAD_TIME
+
+        local lateralScaled = Vector3.new(
+            biasedVel.X * 0.55,
+            biasedVel.Y,
+            biasedVel.Z * 0.55
+        )
+
+        local rawPredicted =
             targetPos +
-            hrp.AssemblyLinearVelocity * LEAD_TIME
+            lateralScaled * t +
+            0.5 * accel * (t ^ 2)
+
+        local predictedPos = smoothPrediction(dt, rawPredicted)
 
         -- Camera rotation
         local targetCF = CFrame.new(cam.CFrame.Position, predictedPos)
