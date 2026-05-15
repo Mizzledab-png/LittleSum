@@ -15,7 +15,7 @@ local holdingAlt = false
 local MAX_SCREEN_DIST = 200
 local CAMERA_SMOOTHNESS = 0.14
 local LEAD_TIME = 0.25
-local SMOOTH_FACTOR = 25
+local SMOOTH_FACTOR = 10
 local STRAFE_BIAS = 2
 
 --// Prediction State (No Jerk)
