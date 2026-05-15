@@ -11,12 +11,12 @@ local locked = false
 local enemy = nil
 local holdingAlt = false
 
---// Raw Precision Tracking (NO SMOOTHING)
-local MAX_SCREEN_DIST = 200
-local LEAD_TIME = 0.15
-local STRAFE_BIAS = .42
+--// Precision-Sniper Hybrid Tuning
+local MAX_SCREEN_DIST = 240
+local LEAD_TIME = 0.165          -- longer = more stable long-range prediction
+local STRAFE_BIAS = 0.34         -- reduced lateral aggression for precision
 
---// Prediction State (No smoothing)
+--// Prediction State
 local lastVel = nil
 local accel = Vector3.zero
 
@@ -95,7 +95,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
---// RAW Precision Tracking Loop (NO SMOOTHING ANYWHERE)
+--// Precision-Sniper Hybrid Tracking Loop
 RunService.RenderStepped:Connect(function(dt)
     if locked and holdingAlt and enemy and enemy:FindFirstChild("HumanoidRootPart") then
         
@@ -106,10 +106,10 @@ RunService.RenderStepped:Connect(function(dt)
         -- RAW velocity
         local vel = hrp.AssemblyLinearVelocity
 
-        -- Vertical clamp (keeps camera from bouncing)
-        local verticalVel = math.clamp(vel.Y, -12, 12)
+        -- Ultra-tight vertical clamp (sniper stability)
+        local verticalVel = math.clamp(vel.Y, -3, 3)
 
-        -- RAW lateral velocity (no smoothing)
+        -- Precision lateral velocity (low aggression)
         local camLook = cam.CFrame.LookVector
         local lateralVel = vel - (vel:Dot(camLook) * camLook)
         lateralVel *= STRAFE_BIAS
@@ -120,19 +120,27 @@ RunService.RenderStepped:Connect(function(dt)
             lateralVel.Z
         )
 
-        -- RAW acceleration (no smoothing)
+        -- RAW acceleration
         if lastVel then
             accel = (vel - lastVel) / dt
         end
         lastVel = vel
 
-        -- RAW second-order prediction
+        -- Precision acceleration clamp (sniper micro-corrections)
+        accel = Vector3.new(
+            math.clamp(accel.X, -26, 26),
+            math.clamp(accel.Y, -6, 6),
+            math.clamp(accel.Z, -26, 26)
+        )
+
+        -- Prediction window
         local t = LEAD_TIME
 
+        -- Precision lateral scaling (stable long-range tracking)
         local lateralScaled = Vector3.new(
-            biasedVel.X * 0.42,
+            biasedVel.X * 0.28,
             biasedVel.Y,
-            biasedVel.Z * 0.42
+            biasedVel.Z * 0.28
         )
 
         local predictedPos =
@@ -140,7 +148,7 @@ RunService.RenderStepped:Connect(function(dt)
             lateralScaled * t +
             0.5 * accel * (t ^ 2)
 
-        -- NO smoothing, NO lerp — instant snap
+        -- Instant snap (no smoothing)
         cam.CFrame = CFrame.new(cam.CFrame.Position, predictedPos)
     end
 end)
