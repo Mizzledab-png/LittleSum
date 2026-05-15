@@ -11,21 +11,18 @@ local locked = false
 local enemy = nil
 local holdingAlt = false
 
---// Precision Tracking Tuning (No Jerk)
+--// Raw Precision Tracking (NO SMOOTHING)
 local MAX_SCREEN_DIST = 200
-local CAMERA_SMOOTHNESS = 0.14
-local LEAD_TIME = 0.25
-local SMOOTH_FACTOR = 10
-local STRAFE_BIAS = 2
+local LEAD_TIME = 0.18
+local STRAFE_BIAS = 1.35
 
---// Prediction State (No Jerk)
+--// Prediction State (No smoothing)
 local lastVel = nil
 local accel = Vector3.zero
-local smoothPredicted = nil
 
 local function resetPredictionState()
-    smoothPredicted = nil
     lastVel = nil
+    accel = Vector3.zero
 end
 
 --// Closest Player to Cursor
@@ -98,20 +95,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
---// Smoothing
-local function smoothPrediction(dt, rawTarget)
-    if not smoothPredicted then
-        smoothPredicted = rawTarget
-        return rawTarget
-    end
-
-    local alpha = 1 - math.exp(-SMOOTH_FACTOR * dt)
-    smoothPredicted = smoothPredicted:Lerp(rawTarget, alpha)
-
-    return smoothPredicted
-end
-
---// Precision Tracking Loop (No Jerk)
+--// RAW Precision Tracking Loop (NO SMOOTHING ANYWHERE)
 RunService.RenderStepped:Connect(function(dt)
     if locked and holdingAlt and enemy and enemy:FindFirstChild("HumanoidRootPart") then
         
@@ -122,10 +106,10 @@ RunService.RenderStepped:Connect(function(dt)
         -- RAW velocity
         local vel = hrp.AssemblyLinearVelocity
 
-        -- Tight vertical clamp for precision
-        local verticalVel = math.clamp(vel.Y, -20, 20)
+        -- Vertical clamp (keeps camera from bouncing)
+        local verticalVel = math.clamp(vel.Y, -12, 12)
 
-        -- Precision strafe bias
+        -- RAW lateral velocity (no smoothing)
         local camLook = cam.CFrame.LookVector
         local lateralVel = vel - (vel:Dot(camLook) * camLook)
         lateralVel *= STRAFE_BIAS
@@ -136,34 +120,27 @@ RunService.RenderStepped:Connect(function(dt)
             lateralVel.Z
         )
 
-        -- Acceleration (raw)
+        -- RAW acceleration (no smoothing)
         if lastVel then
             accel = (vel - lastVel) / dt
         end
-
-        -- Reduce vertical accel influence
-        accel = Vector3.new(accel.X, accel.Y * 0.20, accel.Z)
-
         lastVel = vel
 
-        -- Second‑order prediction (NO jerk)
+        -- RAW second-order prediction
         local t = LEAD_TIME
 
         local lateralScaled = Vector3.new(
-            biasedVel.X * 0.55,
+            biasedVel.X * 0.42,
             biasedVel.Y,
-            biasedVel.Z * 0.55
+            biasedVel.Z * 0.42
         )
 
-        local rawPredicted =
+        local predictedPos =
             targetPos +
             lateralScaled * t +
             0.5 * accel * (t ^ 2)
 
-        local predictedPos = smoothPrediction(dt, rawPredicted)
-
-        -- Camera rotation
-        local targetCF = CFrame.new(cam.CFrame.Position, predictedPos)
-        cam.CFrame = cam.CFrame:Lerp(targetCF, CAMERA_SMOOTHNESS)
+        -- NO smoothing, NO lerp — instant snap
+        cam.CFrame = CFrame.new(cam.CFrame.Position, predictedPos)
     end
 end)
