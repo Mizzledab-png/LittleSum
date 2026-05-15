@@ -7,7 +7,7 @@ local player = Players.LocalPlayer
 
 -- CONFIG
 local AUTO_DISTANCE = 5
-local DELAY = 2 -- wait 2 seconds AFTER completion
+local DELAY = 0.1
 
 -- STATE
 local autoEnabled = true
@@ -15,43 +15,38 @@ local screenGui = nil
 local statusLabel = nil
 local hrp = nil
 
--- Reused tables
 local activePrompts = {}
 local waitingForCompletion = {}
 local nextFireTime = {}
 
--- Predefined strings
 local STATUS_ON = "Auto Prompt: ON"
 local STATUS_OFF = "Auto Prompt: OFF"
 
--- GUI creation
+local maxDistSquared = AUTO_DISTANCE * AUTO_DISTANCE
+
+-- GUI
 local function createGUI()
-    if screenGui ~= nil then
+    if screenGui then
         screenGui:Destroy()
-        screenGui = nil
-        statusLabel = nil
     end
 
-    local pg = player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui")
+    local pg = player:WaitForChild("PlayerGui")
 
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "AutoPromptGUI"
-    gui.ResetOnSpawn = false
-    gui.Parent = pg
-    screenGui = gui
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoPromptGUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = pg
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0, 250, 0, 40)
-    label.Position = UDim2.new(0, 20, 1, -60)
-    label.BackgroundTransparency = 0.3
-    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextScaled = true
-    label.Font = Enum.Font.GothamBold
-    label.Text = STATUS_ON
-    label.Parent = gui
-
-    statusLabel = label
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(0, 250, 0, 40)
+    statusLabel.Position = UDim2.new(0, 20, 1, -60)
+    statusLabel.BackgroundTransparency = 0.3
+    statusLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    statusLabel.TextScaled = true
+    statusLabel.Font = Enum.Font.GothamBold
+    statusLabel.Text = STATUS_ON
+    statusLabel.Parent = screenGui
 end
 
 local function updateStatus()
@@ -60,38 +55,37 @@ local function updateStatus()
     end
 end
 
--- Fast prompt position resolver
-local function getPromptPosition(prompt)
+-- Prompt registry
+ProximityPromptService.PromptShown:Connect(function(prompt)
     local parent = prompt.Parent
     while parent and not parent:IsA("BasePart") do
         parent = parent.Parent
     end
-    return parent and parent.Position
-end
 
--- EVENTS
-
-ProximityPromptService.PromptShown:Connect(function(prompt)
+    activePrompts[prompt] = {
+        pos = parent and parent.Position or nil,
+        enabledConn = prompt:GetPropertyChangedSignal("Enabled"):Connect(function()
+            if prompt.Enabled then
+                waitingForCompletion[prompt] = nil
+                nextFireTime[prompt] = tick() + DELAY
+            end
+        end)
+	}
     prompt.MaxActivationDistance = AUTO_DISTANCE
-    activePrompts[prompt] = true
-
-    -- COMPLETION METHOD #3: Enabled flips back to true
-    prompt:GetPropertyChangedSignal("Enabled"):Connect(function()
-        if prompt.Enabled then
-            waitingForCompletion[prompt] = nil
-            nextFireTime[prompt] = tick() + DELAY
-        end
-    end)
 end)
 
 ProximityPromptService.PromptHidden:Connect(function(prompt)
-    -- COMPLETION METHOD #2: Hidden = complete
-    activePrompts[prompt] = nil
+    local data = activePrompts[prompt]
+    if data then
+        if data.enabledConn then
+            data.enabledConn:Disconnect()
+        end
+        activePrompts[prompt] = nil
+    end
     waitingForCompletion[prompt] = nil
     nextFireTime[prompt] = tick() + DELAY
 end)
 
--- COMPLETION METHOD #1: PromptTriggered
 ProximityPromptService.PromptTriggered:Connect(function(prompt, plr)
     if plr == player then
         waitingForCompletion[prompt] = nil
@@ -102,9 +96,9 @@ end)
 player.CharacterAdded:Connect(function(char)
     hrp = char:WaitForChild("HumanoidRootPart")
 
-    for k in pairs(activePrompts) do activePrompts[k] = nil end
-    for k in pairs(waitingForCompletion) do waitingForCompletion[k] = nil end
-    for k in pairs(nextFireTime) do nextFireTime[k] = nil end
+    table.clear(activePrompts)
+    table.clear(waitingForCompletion)
+    table.clear(nextFireTime)
 
     createGUI()
     updateStatus()
@@ -112,54 +106,43 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if input.KeyCode == Enum.KeyCode.G then
+    if input.KeyCode == Enum.KeyCode.Y then
         autoEnabled = not autoEnabled
         updateStatus()
     end
 end)
 
--- MAIN LOOP
-local fire = fireproximityprompt
-local maxDist = AUTO_DISTANCE
-
+-- MAIN LOOP (optimized)
 RunService.Heartbeat:Connect(function()
-    if not autoEnabled then return end
-    local root = hrp
-    if not root then return end
+    if not autoEnabled or not hrp then return end
 
-    local rootPos = root.Position
     local now = tick()
+    local rootPos = hrp.Position
 
-    local prompt = next(activePrompts)
-    while prompt do
-        if prompt.Enabled then
-            local pos = getPromptPosition(prompt)
-            if pos then
-                if (rootPos - pos).Magnitude <= maxDist then
-
-                    -- If still waiting for completion, do nothing
-                    if not waitingForCompletion[prompt] then
-
-                        -- Check if cooldown expired
-                        local nf = nextFireTime[prompt]
-                        if not nf or now >= nf then
-                            waitingForCompletion[prompt] = true
-                            nextFireTime[prompt] = nil
-                            fire(prompt)
-                        end
-                    end
-
-                else
-                    waitingForCompletion[prompt] = nil
+    for prompt, data in pairs(activePrompts) do
+        if not prompt.Parent then
+            activePrompts[prompt] = nil
+            waitingForCompletion[prompt] = nil
+            nextFireTime[prompt] = nil
+        elseif prompt.Enabled and data.pos then
+            local diff = rootPos - data.pos
+            if diff.X * diff.X + diff.Y * diff.Y + diff.Z * diff.Z <= maxDistSquared then
+                local nf = nextFireTime[prompt]
+                if (not nf or now >= nf) and not waitingForCompletion[prompt] then
+                    waitingForCompletion[prompt] = true
                     nextFireTime[prompt] = nil
+
+              fireproximityprompt(prompt, 0)
+			
                 end
+            else
+                nextFireTime[prompt] = nil
             end
         end
-        prompt = next(activePrompts, prompt)
     end
 end)
 
--- INITIAL SETUP
+-- INITIAL
 createGUI()
 updateStatus()
 
