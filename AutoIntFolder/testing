@@ -13,8 +13,8 @@ local holdingAlt = false
 
 --// Raw Precision Tracking (NO SMOOTHING)
 local MAX_SCREEN_DIST = 200
-local LEAD_TIME = 0.18
-local STRAFE_BIAS = 1.17
+local LEAD_TIME = 0.11
+local STRAFE_BIAS = .42
 
 --// Prediction State (No smoothing)
 local lastVel = nil
