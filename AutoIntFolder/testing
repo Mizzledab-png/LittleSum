@@ -19,7 +19,7 @@ local enemyHead = nil
 
 --// SETTINGS
 local MAX_SCREEN_DIST = 240
-local PRED_TIME = 0.09
+local PRED_TIME = 0.05
 
 --// HEAD VELOCITY CACHE
 local lastHeadPos = nil
