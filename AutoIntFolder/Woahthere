@@ -352,55 +352,39 @@ local function showTargetUI(car)
     local p = VM.primary[car]
     if not p then return end
 
-    local pct = 0
-    progressUpdater = rs.Heartbeat:Connect(function()
+    -- INSTANT GPS (no progress bar)
+    progressLabel.Text = "<font color='rgb(0,255,0)'>GPS ONLINE</font>"
+
+    -- Create billboard immediately
+    local bb = Instance.new("BillboardGui")
+    bb.Size = UDim2.new(0,150,0,45)
+    bb.AlwaysOnTop = true
+    bb.Adornee = p
+    bb.Parent = car
+    activeBillboard = bb
+
+    local lb = Instance.new("TextLabel")
+    lb.Size = UDim2.new(1,0,1,0)
+    lb.BackgroundTransparency = 1
+    lb.Font = Enum.Font.GothamBold
+    lb.TextScaled = true
+    lb.TextColor3 = Color3.fromRGB(255,60,60)
+    lb.Parent = bb
+
+    liveUpdater = rs.Heartbeat:Connect(function()
         if not car.Parent then
-            progressLabel.Text = "<font color='rgb(255,0,0)'>TARGET LOST</font>"
-            disconnectConn(progressUpdater)
-            progressUpdater = nil
+            lb.Text = "Lost Target"
             return
         end
 
-        if pct < 100 then
-            pct = math.min(pct + 2, 100)
-            progressLabel.Text = getProgressBar(pct)
+        local r = root()
+        if not r or not r.Parent then
+            lb.Text = car.Name .. "\nN/A"
             return
         end
 
-        progressLabel.Text = "<font color='rgb(0,255,0)'>COMPLETE</font>"
-        disconnectConn(progressUpdater)
-        progressUpdater = nil
-
-        local bb = Instance.new("BillboardGui")
-        bb.Size = UDim2.new(0,150,0,45)
-        bb.AlwaysOnTop = true
-        bb.Adornee = p
-        bb.Parent = car
-        activeBillboard = bb
-
-        local lb = Instance.new("TextLabel")
-        lb.Size = UDim2.new(1,0,1,0)
-        lb.BackgroundTransparency = 1
-        lb.Font = Enum.Font.GothamBold
-        lb.TextScaled = true
-        lb.TextColor3 = Color3.fromRGB(255,60,60)
-        lb.Parent = bb
-
-        liveUpdater = rs.Heartbeat:Connect(function()
-            if not car.Parent then
-                lb.Text = "Lost Target"
-                return
-            end
-
-            local r = root()
-            if not r or not r.Parent then
-                lb.Text = car.Name .. "\nN/A"
-                return
-            end
-
-            local d = math.floor((p.Position - r.Position).Magnitude)
-            lb.Text = ("%s\n%d studs"):format(car.Name, d)
-        end)
+        local d = math.floor((p.Position - r.Position).Magnitude)
+        lb.Text = ("%s\n%d studs"):format(car.Name, d)
     end)
 end
 
@@ -471,7 +455,7 @@ local function CONNECTIONS()
         b.MouseButton1Click:Connect(function()
             lastCar = car
             clearSonarUI()
-            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>GPS Booting</font>"):format(car.Name))
+            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>GPS Online</font>"):format(car.Name))
             showTargetUI(car)
         end)
     end
