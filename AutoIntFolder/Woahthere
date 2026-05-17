@@ -441,6 +441,7 @@ local function CONNECTIONS()
         b.TextSize = 14
         b.RichText = true
         b.TextXAlignment = Enum.TextXAlignment.Left
+        b.LayoutOrder = i
         b.Parent = sonarList
 
         local dist = math.floor(e.dist)
@@ -462,27 +463,43 @@ local function CONNECTIONS()
 
     sonarList.CanvasSize = UDim2.new(0,0,0,count * 26)
 
-    disconnectConn(listUpdater)
-    listUpdater = rs.Heartbeat:Connect(function()
-        local r = root()
-        if not r or not r.Parent then return end
+  disconnectConn(listUpdater)
+listUpdater = rs.Heartbeat:Connect(function()
+    local r = root()
+    if not r or not r.Parent then return end
 
-        for car,button in pairs(buttons) do
-            if car and car.Parent then
-                local p = VM.primary[car]
-                if p then
-                    local d = math.floor((p.Position - r.Position).Magnitude)
-                    button.Text = string.format("%s  %s  (%d studs)",
-                        car.Name,
-                        getSignalBars(d),
-                        d
-                    )
-                end
-            else
-                button.Text = (car and car.Name or "Unknown") .. " (lost)"
+    -- Build a fresh sorted list every frame
+    local sorted = {}
+    for car,button in pairs(buttons) do
+        if car and car.Parent then
+            local p = VM.primary[car]
+            if p then
+                local d = (p.Position - r.Position).Magnitude
+                table.insert(sorted, {car = car, button = button, dist = d})
             end
         end
+    end
+
+    table.sort(sorted, function(a,b)
+        return a.dist < b.dist
     end)
+
+    -- Update button order + text
+    for i = 1, #sorted do
+        local entry = sorted[i]
+        local car = entry.car
+        local button = entry.button
+        local dist = math.floor(entry.dist)
+
+        button.LayoutOrder = i
+        button.Text = string.format("%s  %s  (%d studs)",
+            car.Name,
+            getSignalBars(dist),
+            dist
+        )
+    end
+end)
+
 end
 
 -------------------------------------------------
