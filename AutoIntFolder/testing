@@ -17,15 +17,6 @@ local enemyHum = nil
 local enemyHRP = nil
 local enemyHead = nil
 
---// SETTINGS
-local MAX_SCREEN_DIST = 240
-local BASE_PRED_TIME = 0.05
-local DIST_SCALE_DIVISOR = 55 -- lower = more scaling, higher = less
-
---// HRP VELOCITY CACHE
-local lastHRPPos = nil
-local hrpVelocity = Vector3.zero
-
 --// VALIDITY CHECK
 local function IsValidEnemy()
     if not enemyChar or not enemyChar.Parent then return false end
@@ -38,7 +29,7 @@ end
 local function getClosestPlayerToCursor()
     local mousePos = UserInputService:GetMouseLocation()
     local closestChar = nil
-    local closestDist = MAX_SCREEN_DIST
+    local closestDist = 240
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= lp and plr.Character then
@@ -72,7 +63,6 @@ local function bindAutoUnlock(character)
             enemyHum = nil
             enemyHRP = nil
             enemyHead = nil
-            lastHRPPos = nil
         end)
     end
 end
@@ -115,14 +105,13 @@ UserInputService.InputEnded:Connect(function(input)
         enemyHum = nil
         enemyHRP = nil
         enemyHead = nil
-        lastHRPPos = nil
     end
 end)
 
 ---------------------------------------------------------------------
--- DISTANCE‑SCALED PREDICTION + HRP VELOCITY + MOUSEMOVERE L
+-- RAW CAMERA LOCK (NO prediction, NO smoothing, NO mouse movement)
 ---------------------------------------------------------------------
-RunService.RenderStepped:Connect(function(dt)
+RunService.RenderStepped:Connect(function()
     if not locked or not holdingAlt then return end
     if not IsValidEnemy() then
         locked = false
@@ -130,39 +119,12 @@ RunService.RenderStepped:Connect(function(dt)
         enemyHum = nil
         enemyHRP = nil
         enemyHead = nil
-        lastHRPPos = nil
         return
     end
 
     local head = enemyHead or enemyHRP
     local headPos = head.Position
 
-    -- compute HRP velocity
-    if lastHRPPos then
-        hrpVelocity = (enemyHRP.Position - lastHRPPos) / dt
-    end
-    lastHRPPos = enemyHRP.Position
-
-    -- distance from camera to target
-    local distance = (cam.CFrame.Position - headPos).Magnitude
-
-    -- distance‑scaled prediction time
-    local scaledPredTime = BASE_PRED_TIME * (1 + (distance / DIST_SCALE_DIVISOR))
-
-    -- predicted head position
-    local predicted = headPos + (hrpVelocity * scaledPredTime)
-
-    -- project to screen
-    local screenPos, onScreen = cam:WorldToViewportPoint(predicted)
-    if not onScreen then return end
-
-    -- screen center
-    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-
-    -- delta
-    local dx = screenPos.X - center.X
-    local dy = screenPos.Y - center.Y
-
-    -- raw mouse movement
-    mousemoverel(dx, dy)
+    -- RAW camera lock: camera rotates to face the head
+    cam.CFrame = CFrame.new(cam.CFrame.Position, headPos)
 end)
