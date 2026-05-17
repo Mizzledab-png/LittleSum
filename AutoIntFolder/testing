@@ -19,11 +19,12 @@ local enemyHead = nil
 
 --// SETTINGS
 local MAX_SCREEN_DIST = 240
-local PRED_TIME = 0.05
+local BASE_PRED_TIME = 0.05
+local DIST_SCALE_DIVISOR = 35 -- lower = more scaling, higher = less
 
---// HEAD VELOCITY CACHE
-local lastHeadPos = nil
-local headVelocity = Vector3.zero
+--// HRP VELOCITY CACHE
+local lastHRPPos = nil
+local hrpVelocity = Vector3.zero
 
 --// VALIDITY CHECK
 local function IsValidEnemy()
@@ -71,7 +72,7 @@ local function bindAutoUnlock(character)
             enemyHum = nil
             enemyHRP = nil
             enemyHead = nil
-            lastHeadPos = nil
+            lastHRPPos = nil
         end)
     end
 end
@@ -114,12 +115,12 @@ UserInputService.InputEnded:Connect(function(input)
         enemyHum = nil
         enemyHRP = nil
         enemyHead = nil
-        lastHeadPos = nil
+        lastHRPPos = nil
     end
 end)
 
 ---------------------------------------------------------------------
--- HEAD‑VELOCITY PREDICTION + MOUSEMOVERE L LOCK
+-- DISTANCE‑SCALED PREDICTION + HRP VELOCITY + MOUSEMOVERE L
 ---------------------------------------------------------------------
 RunService.RenderStepped:Connect(function(dt)
     if not locked or not holdingAlt then return end
@@ -129,21 +130,27 @@ RunService.RenderStepped:Connect(function(dt)
         enemyHum = nil
         enemyHRP = nil
         enemyHead = nil
-        lastHeadPos = nil
+        lastHRPPos = nil
         return
     end
 
     local head = enemyHead or enemyHRP
     local headPos = head.Position
 
-    -- compute head velocity
-    if lastHeadPos then
-        headVelocity = (headPos - lastHeadPos) / dt
+    -- compute HRP velocity
+    if lastHRPPos then
+        hrpVelocity = (enemyHRP.Position - lastHRPPos) / dt
     end
-    lastHeadPos = headPos
+    lastHRPPos = enemyHRP.Position
+
+    -- distance from camera to target
+    local distance = (cam.CFrame.Position - headPos).Magnitude
+
+    -- distance‑scaled prediction time
+    local scaledPredTime = BASE_PRED_TIME * (1 + (distance / DIST_SCALE_DIVISOR))
 
     -- predicted head position
-    local predicted = headPos + (headVelocity * PRED_TIME)
+    local predicted = headPos + (hrpVelocity * scaledPredTime)
 
     -- project to screen
     local screenPos, onScreen = cam:WorldToViewportPoint(predicted)
