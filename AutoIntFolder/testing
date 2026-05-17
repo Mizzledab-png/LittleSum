@@ -20,7 +20,7 @@ local enemyHead = nil
 --// SETTINGS
 local MAX_SCREEN_DIST = 240
 local BASE_PRED_TIME = 0.05
-local DIST_SCALE_DIVISOR = 35 -- lower = more scaling, higher = less
+local DIST_SCALE_DIVISOR = 55 -- lower = more scaling, higher = less
 
 --// HRP VELOCITY CACHE
 local lastHRPPos = nil
