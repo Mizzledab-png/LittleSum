@@ -455,7 +455,7 @@ local function CONNECTIONS()
         b.MouseButton1Click:Connect(function()
             lastCar = car
             clearSonarUI()
-            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>GPS Online</font>"):format(car.Name))
+            setText(("CONNECTION LOCKED\n\n%s\n\n<font size='18'>Target Aquired</font>"):format(car.Name))
             showTargetUI(car)
         end)
     end
