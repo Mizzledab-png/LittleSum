@@ -15,8 +15,11 @@ local CFG = {
     Col = Color3.fromRGB(220,40,40),
     BG = Color3.fromRGB(10,10,14),
     Panel = Color3.fromRGB(18,18,24),
-    UseMobileButton = true
+    UseMobileButton = false
 }
+
+-- Saved UI position (drag memory)
+local SavedPos = CFG.Pos
 
 local function tween(o,p,t)
     return ts:Create(o, TweenInfo.new(t or .25, Enum.EasingStyle.Quad), p)
@@ -28,7 +31,6 @@ local function isValidCarName(name)
     return name ~= "body" and name ~= "model" and name ~= "futon"
 end
 
--- Prebuilt signal bar strings to avoid rebuilding patterns
 local SIGNAL_STRONG   = "<font color='rgb(0,255,0)'>˒﹚)</font>"
 local SIGNAL_MEDIUM_2 = "<font color='rgb(255,255,0)'>˒﹚</font>"
 local SIGNAL_MEDIUM_1 = "<font color='rgb(255,255,0)'>˒</font>"
@@ -51,25 +53,18 @@ local function getProgressBar(pct)
     local empty = 10 - filled
     local bar = ""
 
-    for _ = 1,filled do
-        bar ..= "<font color='rgb(0,255,0)'>▂</font>"
-    end
-    for _ = 1,empty do
-        bar ..= "<font color='rgb(60,60,60)'>▂</font>"
-    end
+    for _ = 1,filled do bar ..= "<font color='rgb(0,255,0)'>▂</font>" end
+    for _ = 1,empty do bar ..= "<font color='rgb(60,60,60)'>▂</font>" end
 
     return bar
 end
 
--- Cached root for performance
+-- Cached root
 local currentRoot
 
 local function updateRoot()
     local char = plr.Character
-    if not char then
-        currentRoot = nil
-        return
-    end
+    if not char then currentRoot = nil return end
     currentRoot = char:FindFirstChild("HumanoidRootPart")
 end
 
@@ -78,7 +73,6 @@ plr.CharacterAdded:Connect(function(char)
     updateRoot()
 end)
 
--- Initial root
 updateRoot()
 
 local function root()
@@ -90,7 +84,7 @@ end
 -------------------------------
 
 local VM = {cars = {}, primary = {}}
-local lastCar = nil  -- declared early so registry can clear it if needed
+local lastCar = nil
 
 local function assignPrimaryPart(m)
     if m.PrimaryPart then return m.PrimaryPart end
@@ -119,19 +113,14 @@ local function registerModel(m)
     end
 end
 
--- Remove cars from registry when they despawn
 workspace.ChildRemoved:Connect(function(m)
     if VM.primary[m] then
         VM.primary[m] = nil
         for i,v in ipairs(VM.cars) do
-            if v == m then
-                table.remove(VM.cars, i)
-                break
-            end
+            if v == m then table.remove(VM.cars, i) break end
         end
     end
 
-    -- If the selected car disappears, clear it
     if lastCar == m then
         lastCar = nil
         if status then status.Text = "Status: Idle" end
@@ -139,7 +128,6 @@ workspace.ChildRemoved:Connect(function(m)
     end
 end)
 
--- Auto-register new vehicles when they appear
 workspace.DescendantAdded:Connect(function(o)
     if o:IsA("VehicleSeat") then
         local m = o:FindFirstAncestorWhichIsA("Model")
@@ -147,15 +135,10 @@ workspace.DescendantAdded:Connect(function(o)
     end
 end)
 
--- Initial scan of workspace for vehicles
-do
-    local desc = workspace:GetDescendants()
-    for i = 1,#desc do
-        local o = desc[i]
-        if o:IsA("VehicleSeat") then
-            local m = o:FindFirstAncestorWhichIsA("Model")
-            if m then registerModel(m) end
-        end
+for _,o in ipairs(workspace:GetDescendants()) do
+    if o:IsA("VehicleSeat") then
+        local m = o:FindFirstAncestorWhichIsA("Model")
+        if m then registerModel(m) end
     end
 end
 
@@ -171,7 +154,7 @@ gui.Parent = plr:WaitForChild("PlayerGui")
 
 local tab = Instance.new("Frame")
 tab.Size = CFG.Size
-tab.Position = CFG.Pos
+tab.Position = SavedPos
 tab.AnchorPoint = Vector2.new(.5,.5)
 tab.BackgroundColor3 = CFG.BG
 tab.Visible = false
@@ -184,27 +167,34 @@ st.Color = CFG.Col
 st.Transparency = .2
 st.Parent = tab
 
--- Dragging
-local drag, ds, sp
+-- DRAGGING WITH POSITION MEMORY
+local drag, dragStart, startPos
+
 tab.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
         drag = true
-        ds = i.Position
-        sp = tab.Position
+        dragStart = i.Position
+        startPos = tab.Position
     end
 end)
 
 tab.InputChanged:Connect(function(i)
     if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local d = i.Position - ds
-        tab.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+        local delta = i.Position - dragStart
+        local newPos = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+
+        tab.Position = newPos
+        SavedPos = newPos
     end
 end)
 
 uis.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        drag = false
-    end
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
 end)
 
 local main = Instance.new("Frame")
@@ -312,19 +302,15 @@ local listUpdater = nil
 local progressUpdater = nil
 
 local function disconnectConn(c)
-    if c then c:Disconnect() end
+    if c and c.Connected then c:Disconnect() end
 end
 
 local function clearSonarUI()
     sonarList.Visible = false
     sonarList.CanvasSize = UDim2.new(0,0,0,0)
 
-    local children = sonarList:GetChildren()
-    for i = 1,#children do
-        local v = children[i]
-        if v:IsA("TextButton") then
-            v:Destroy()
-        end
+    for _,v in ipairs(sonarList:GetChildren()) do
+        if v:IsA("TextButton") then v:Destroy() end
     end
 
     if activeBillboard then
@@ -344,7 +330,11 @@ local function clearSonarUI()
 end
 
 local function showTargetUI(car)
-    if activeBillboard then activeBillboard:Destroy() end
+    if activeBillboard then
+        activeBillboard:Destroy()
+        activeBillboard = nil
+    end
+
     disconnectConn(liveUpdater)
     disconnectConn(progressUpdater)
     progressLabel.Text = ""
@@ -352,10 +342,8 @@ local function showTargetUI(car)
     local p = VM.primary[car]
     if not p then return end
 
-    -- INSTANT GPS (no progress bar)
     progressLabel.Text = "<font color='rgb(0,255,0)'>GPS ONLINE</font>"
 
-    -- Create billboard immediately
     local bb = Instance.new("BillboardGui")
     bb.Size = UDim2.new(0,150,0,45)
     bb.AlwaysOnTop = true
@@ -393,20 +381,14 @@ local function buildVehicleList()
     if not r or not r.Parent then return {} end
 
     local list = {}
-    local cars = VM.cars
-    for i = 1,#cars do
-        local m = cars[i]
+    for _,m in ipairs(VM.cars) do
         local p = VM.primary[m]
         if p and m.Parent then
-            local d = (p.Position - r.Position).Magnitude
-            list[#list+1] = {car = m, dist = d}
+            list[#list+1] = {car = m, dist = (p.Position - r.Position).Magnitude}
         end
     end
 
-    table.sort(list, function(a,b)
-        return a.dist < b.dist
-    end)
-
+    table.sort(list, function(a,b) return a.dist < b.dist end)
     return list
 end
 
@@ -416,10 +398,10 @@ end
 
 local function CONNECTIONS()
     clearSonarUI()
+    task.wait()
 
     local list = buildVehicleList()
-    local count = #list
-    if count == 0 then
+    if #list == 0 then
         setText("CONNECTIONS MODE\n\nNo vehicles detected.")
         return
     end
@@ -429,10 +411,8 @@ local function CONNECTIONS()
 
     local buttons = {}
 
-    for i = 1,count do
-        local e = list[i]
+    for i,e in ipairs(list) do
         local car = e.car
-
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(1,0,0,22)
         b.BackgroundTransparency = 1
@@ -445,11 +425,7 @@ local function CONNECTIONS()
         b.Parent = sonarList
 
         local dist = math.floor(e.dist)
-        b.Text = string.format("%s  %s  (%d studs)",
-            car.Name,
-            getSignalBars(dist),
-            dist
-        )
+        b.Text = string.format("%s  %s  (%d studs)", car.Name, getSignalBars(dist), dist)
 
         buttons[car] = b
 
@@ -461,45 +437,34 @@ local function CONNECTIONS()
         end)
     end
 
-    sonarList.CanvasSize = UDim2.new(0,0,0,count * 26)
+    sonarList.CanvasSize = UDim2.new(0,0,0,#list * 26)
 
-  disconnectConn(listUpdater)
-listUpdater = rs.Heartbeat:Connect(function()
-    local r = root()
-    if not r or not r.Parent then return end
+    disconnectConn(listUpdater)
+    listUpdater = rs.Heartbeat:Connect(function()
+        local r = root()
+        if not r or not r.Parent then return end
 
-    -- Build a fresh sorted list every frame
-    local sorted = {}
-    for car,button in pairs(buttons) do
-        if car and car.Parent then
-            local p = VM.primary[car]
-            if p then
-                local d = (p.Position - r.Position).Magnitude
-                table.insert(sorted, {car = car, button = button, dist = d})
+        local sorted = {}
+        for car,button in pairs(buttons) do
+            if car.Parent then
+                local p = VM.primary[car]
+                if p then
+                    table.insert(sorted, {car = car, button = button, dist = (p.Position - r.Position).Magnitude})
+                end
             end
         end
-    end
 
-    table.sort(sorted, function(a,b)
-        return a.dist < b.dist
+        table.sort(sorted, function(a,b) return a.dist < b.dist end)
+
+        for i,entry in ipairs(sorted) do
+            local car = entry.car
+            local button = entry.button
+            local dist = math.floor(entry.dist)
+
+            button.LayoutOrder = i
+            button.Text = string.format("%s  %s  (%d studs)", car.Name, getSignalBars(dist), dist)
+        end
     end)
-
-    -- Update button order + text
-    for i = 1, #sorted do
-        local entry = sorted[i]
-        local car = entry.car
-        local button = entry.button
-        local dist = math.floor(entry.dist)
-
-        button.LayoutOrder = i
-        button.Text = string.format("%s  %s  (%d studs)",
-            car.Name,
-            getSignalBars(dist),
-            dist
-        )
-    end
-end)
-
 end
 
 -------------------------------------------------
@@ -517,7 +482,6 @@ local function REPROGRAM()
 
     status.Text = "Status: Working"
 
-    -- Fake diagnostic log messages
     local logs = {
         "Initializing CAN handshake...",
         "Reading ECU firmware blocks...",
@@ -545,12 +509,10 @@ local function REPROGRAM()
             return
         end
 
-        -- Update progress bar
         if pct < 100 then
             pct = math.min(pct + 2, 100)
             progressLabel.Text = getProgressBar(pct)
 
-            -- Every 10% → advance diagnostic log
             local newIndex = math.clamp(math.floor(pct / 10) + 1, 1, #logs)
             if newIndex ~= logIndex then
                 logIndex = newIndex
@@ -560,29 +522,21 @@ local function REPROGRAM()
             return
         end
 
-        -- COMPLETE
         progressLabel.Text = "<font color='rgb(0,255,0)'>COMPLETE</font>"
-        disconnectConn(progressUpdater)
+                disconnectConn(progressUpdater)
         progressUpdater = nil
 
-        -- Perform the actual reprogramming AFTER the bar finishes
-        local descendants = lastCar:GetDescendants()
-        for i = 1,#descendants do
-            local d = descendants[i]
-
+        for _,d in ipairs(lastCar:GetDescendants()) do
             if d:IsA("VehicleSeat") or d:IsA("Seat") then
                 d.Disabled = false
                 d:Sit(nil)
             end
-
             if d:IsA("BasePart") then
                 d.Anchored = false
             end
-
             if d:GetAttribute("EngineDisabled") ~= nil then
                 d:SetAttribute("EngineDisabled", false)
             end
-
             if d:GetAttribute("Immobilized") ~= nil then
                 d:SetAttribute("Immobilized", false)
             end
@@ -671,11 +625,10 @@ local function btn(name, order, callback)
     b.MouseButton1Click:Connect(callback)
 end
 
--- BUTTON ORDER (FINALIZED)
-btn("Connections",   1, CONNECTIONS)
-btn("Reprogram",     2, REPROGRAM)
-btn("Scan",          3, SCAN)
-btn("Exit",          4, EXIT)
+btn("Connections", 1, CONNECTIONS)
+btn("Reprogram",   2, REPROGRAM)
+btn("Scan",        3, SCAN)
+btn("Exit",        4, EXIT)
 
 -------------------------------------
 -- SECTION 9: INPUT HANDLING
@@ -683,7 +636,7 @@ btn("Exit",          4, EXIT)
 
 local function openTablet()
     tab.Visible = true
-    tween(tab, {Position = CFG.Pos}, .25):Play()
+    tab.Position = SavedPos
 
     if lastCar and lastCar.Parent then
         setText(("Reconnected to %s.\n\nSelect a module."):format(lastCar.Name))
@@ -695,13 +648,20 @@ local function openTablet()
 end
 
 local function closeTablet()
-    tween(tab, {Position = UDim2.new(.5,0,1.2,0)}, .25):Play()
+    tween(tab, {
+        Position = UDim2.new(
+            SavedPos.X.Scale,
+            SavedPos.X.Offset,
+            1.2,
+            0
+        )
+    }, .25):Play()
+
     task.delay(.25, function()
         tab.Visible = false
     end)
 end
 
--- KEYBIND TOGGLE
 uis.InputBegan:Connect(function(i, gpe)
     if gpe then return end
     if i.KeyCode == CFG.Key then
@@ -713,7 +673,6 @@ uis.InputBegan:Connect(function(i, gpe)
     end
 end)
 
--- CHAT COMMAND TOGGLE
 plr.Chatted:Connect(function(msg)
     msg = msg:lower()
     if msg == CFG.Cmd then
