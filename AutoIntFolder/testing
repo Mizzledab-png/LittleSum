@@ -109,7 +109,22 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 ---------------------------------------------------------------------
--- RAW CAMERA LOCK (NO prediction, NO smoothing, NO mouse movement)
+-- PREDICTION SETTINGS
+---------------------------------------------------------------------
+local predictionTime = 0.12 -- adjust 0.08–0.18 depending on game speed
+
+local function getPredictedPosition()
+    if not enemyHRP then return nil end
+
+    local vel = enemyHRP.AssemblyLinearVelocity
+    local head = enemyHead or enemyHRP
+    local basePos = head.Position
+
+    return basePos + (vel * predictionTime)
+end
+
+---------------------------------------------------------------------
+-- RAW CAMERA LOCK + PREDICTION
 ---------------------------------------------------------------------
 RunService.RenderStepped:Connect(function()
     if not locked or not holdingAlt then return end
@@ -122,9 +137,8 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    local head = enemyHead or enemyHRP
-    local headPos = head.Position
+    local predictedPos = getPredictedPosition()
+    if not predictedPos then return end
 
-    -- RAW camera lock: camera rotates to face the head
-    cam.CFrame = CFrame.new(cam.CFrame.Position, headPos)
+    cam.CFrame = CFrame.new(cam.CFrame.Position, predictedPos)
 end)
