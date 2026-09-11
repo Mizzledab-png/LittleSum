@@ -111,7 +111,7 @@ end)
 ---------------------------------------------------------------------
 -- PREDICTION SETTINGS
 ---------------------------------------------------------------------
-local predictionTime = 0.12 -- adjust 0.08–0.18 depending on game speed
+local predictionTime = 0.18 -- adjust 0.08–0.18 depending on game speed
 
 local function getPredictedPosition()
     if not enemyHRP then return nil end
